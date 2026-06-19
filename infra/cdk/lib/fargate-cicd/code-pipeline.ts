@@ -37,6 +37,9 @@ export class CodePipeline extends Construct {
             project: codeBuildApp.project,
             input: sourceArtifact,
             outputs: [buildOutput],
+            // Use the pipeline role directly so CDK does not create a separate
+            // auto-generated action role that lacks codebuild:StartBuild.
+            role: pipelineRole.role,
         });
 
         // Cross-account role in PROD that CodePipeline will assume to call ECS
