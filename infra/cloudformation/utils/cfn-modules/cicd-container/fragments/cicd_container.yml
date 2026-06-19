@@ -1,0 +1,623 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation module for CiCd that builds container and deploys to a workload account
+Parameters:
+  ProjectName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  BranchName:
+    Type: String
+    Default: main
+  WorkloadAccountId:
+    Type: String
+  CrossAccountRoleArn:
+    Type: String
+    Description: ARN of the IAM role that can be assumed by CodePipeline in target account
+  CloudFormationRoleArn:
+    Type: String
+    Description: ARN of IAM role that can be assumed by CloudFormation in target account
+  BuildSpecPath:
+    Type: String
+    Default: utils/cfn-modules/cicd-container/buildspec.yml
+
+Resources:
+
+  ####################
+  # S3 Artifact bucket
+  ####################
+
+  ArtifactOutputBucket:
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt KmsKey.Arn
+    Type: AWS::S3::Bucket
+
+  BucketPolicy:
+    Properties:
+      Bucket: !Ref ArtifactOutputBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !GetAtt CodePipelineRole.Arn
+                - !Ref CrossAccountRoleArn
+                - !Ref CloudFormationRoleArn
+            Action: 's3:*'
+            Resource:
+              - !GetAtt ArtifactOutputBucket.Arn
+              - !Sub arn:aws:s3:::${ArtifactOutputBucket}/*
+    Type: AWS::S3::BucketPolicy
+
+  ########
+  # ECR
+  ########
+
+  ContainerImageRepository:
+    Properties:
+      RepositoryPolicyText:
+        Version: 2012-10-17
+        Statement:
+          Sid: AllowPull
+          Effect: Allow
+          Principal:
+            AWS: !Sub arn:aws:iam::${WorkloadAccountId}:root
+          Action:
+            - ecr:GetAuthorizationToken
+            - ecr:BatchCheckLayerAvailability
+            - ecr:GetDownloadUrlForLayer
+            - ecr:GetRepositoryPolicy
+            - ecr:DescribeRepositories
+            - ecr:ListImages
+            - ecr:DescribeImages
+            - ecr:BatchGetImage
+            - ecr:GetLifecyclePolicy
+            - ecr:GetLifecyclePolicyPreview
+            - ecr:ListTagsForResource
+            - ecr:DescribeImageScanFindings
+    Type: AWS::ECR::Repository
+
+  ############
+  # CodeBuild
+  ############
+
+  CodeBuildServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess # to avoid circular dependencies
+      Policies:
+        - PolicyName: allow-to-push-to-S3
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:PutLogEvents
+                  - logs:PutRetentionPolicy
+                Resource: "arn:aws:logs:*"
+              - Effect: Allow
+                Action: codecommit:GitPull
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codebuild:CreateReport
+                  - codebuild:CreateReportGroup
+                  - codebuild:BatchPutTestCases
+                  - codebuild:UpdateReport
+                Resource: '*'
+              - Effect: Allow
+                Resource: '*'
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetAuthorizationToken
+              - Effect: Allow
+                Action: cloudformation:CreateStack
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DecryptKey
+                  - kms:Encrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  CodeBuildJavaProject:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      ServiceRole: !Ref CodeBuildServiceRole
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Ref BuildSpecPath
+      SourceVersion: !Ref BranchName
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:6.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: PROJECT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: PROJECT_DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectDeploymentName
+          - Name: DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref DeploymentName
+          - Name: AWS_ACCOUNT_ID
+            Type: PLAINTEXT
+            Value: !Ref AWS::AccountId
+          - Name: CONTAINER_IMAGE_REPOSITORY
+            Type: PLAINTEXT
+            Value: !Ref ContainerImageRepository
+      Cache:
+        Location: !Sub ${ArtifactOutputBucket}/cache
+        Type: S3
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub /aws/codebuild/${ProjectDeploymentName}
+    DependsOn: CodeBuildLogGroup
+    Type: AWS::CodeBuild::Project
+
+  CodeBuildLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/codebuild/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  ###############
+  # CodePipeline
+  ###############
+
+  CodePipelineRole:
+    # Role for CodePipeline
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSCodePipeline_FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:CreateDeploymentGroup
+                  - codedeploy:GetApplication
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codecommit:*
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - sns:*
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DecryptKey
+                  - kms:Encrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                Resource: '*'
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Ref CrossAccountRoleArn
+      RoleName: !Sub code-pipeline-role-${ProjectDeploymentName}
+    Type: AWS::IAM::Role
+
+  BuildProjectPipeline:
+    # Creating a build pipeline for your project in AWS CodePipeline
+    Properties:
+      Name: !Sub ${ProjectDeploymentName}-build
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      RestartExecutionOnUpdate: False
+      ArtifactStore:
+        Location: !Ref ArtifactOutputBucket
+        Type: S3
+        EncryptionKey:
+          Id: !GetAtt KmsKey.Arn
+          Type: KMS
+      Stages:
+        - Name: SourceStage
+          Actions:
+            - Name: CodeCommit
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              OutputArtifacts:
+                - Name: source
+              Configuration:
+                BranchName: !Ref BranchName
+                RepositoryName: !Ref ProjectName
+                PollForSourceChanges: false
+                OutputArtifactFormat: CODEBUILD_CLONE_REF
+              Namespace: GitVariables
+        - Name: BuildStage
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildJavaProject
+              InputArtifacts:
+                - Name: source
+              OutputArtifacts:
+                - Name: infra
+        - Name: ImageScanStage
+          Actions:
+            - Name: ContainerImageApproval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                NotificationArn: !Ref BuildApprovalSNSTopic
+                CustomData: CommitId=#{GitVariables.CommitId}
+                ExternalEntityLink: !Sub https://${AWS::Region}.console.aws.amazon.com/ecr/repositories/private/${AWS::AccountId}/${ContainerImageRepository}/
+        - Name: DeployStage
+          Actions:
+            - Name: create-changeset
+              RoleArn: !Ref CrossAccountRoleArn
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub ${ProjectDeploymentName}-deploy
+                ChangeSetName: !Sub ${ProjectDeploymentName}-deploy
+                Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
+                RoleArn: !Ref CloudFormationRoleArn # the action will be executed with this role
+                TemplatePath: "infra::infra.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "ProjectDeploymentName": "${ProjectDeploymentName}",
+                    "DeploymentName": "${DeploymentName}",
+                    "ContainerImageRepositoryUrl": "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ContainerImageRepository}",
+                    "ProjectVersion": "#{GitVariables.CommitId}"
+                  }
+              RunOrder: 1
+            - Name: execute-changeset
+              RoleArn: !Ref CrossAccountRoleArn # the pipeline assume this role to execute this action
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                StackName: !Sub ${ProjectDeploymentName}-deploy
+                ChangeSetName: !Sub ${ProjectDeploymentName}-deploy
+                ActionMode: CHANGE_SET_EXECUTE
+                RoleArn: !Ref CloudFormationRoleArn   # the action will be executed with this role
+              RunOrder: 2
+    Type: AWS::CodePipeline::Pipeline
+
+  ###############
+  # KMS
+  ###############
+
+  KmsKey:
+    Properties:
+      Description: KMS key for CodePipeline artifacts
+      Enabled: true
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-default-1
+        Statement:
+          - Sid: Allows admin of the key
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow use of key in another account
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Ref CrossAccountRoleArn
+                - !Ref CloudFormationRoleArn
+                - !GetAtt CodePipelineRole.Arn
+            Action:
+              - kms:Decrypt
+              - kms:DecryptKey
+              - kms:Encrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+            Resource: '*'
+    Type: AWS::KMS::Key
+
+  #####################################
+  # Container Image Approval
+  #####################################
+
+  BuildApprovalSNSTopic:
+    Properties:
+      TopicName: ContainerApprovalTopic
+      Subscription:
+        - Endpoint: !GetAtt ContainerImageScanLambda.Arn
+          Protocol: Lambda
+    Type: AWS::SNS::Topic
+
+  ContainerImageScanLambda:
+    Properties:
+      FunctionName: !Sub ${ProjectDeploymentName}-container-image-scan # should match log-group suffix
+      Handler: index.lambda_handler
+      Timeout: 60
+      Role: !GetAtt ContainerImageScanLambdaExecutionRole.Arn
+      Runtime: python3.9
+      Environment:
+        Variables:
+          REPOSITORY_NAME: !Ref ContainerImageRepository
+      Code:
+        ZipFile: |
+          import logging
+          import string
+          import boto3
+          import traceback
+          import os
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          repository_name = os.environ['REPOSITORY_NAME']
+          ecr = boto3.client('ecr')
+          
+          def lambda_handler(event, context):
+            try:
+              logger.info('got event {}'.format(event))
+              ecr.start_image_scan(
+                repositoryName = repository_name,
+                imageId = {'imageTag': 'latest'}
+              )
+            except Exception:
+              logger.info('Exception {}'.format(traceback.format_exc()))
+    DependsOn: ContainerImageScanLambdaLogGroup
+    Type: AWS::Lambda::Function
+
+  ContainerImageScanLambdaLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectDeploymentName}-container-image-scan
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  ContainerImageScanLambdaExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: lambda-ecr-start-image-scan-policy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: ecr:StartImageScan
+                Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  StartContainerImageScanPerms:
+    Properties:
+      FunctionName: !Ref ContainerImageScanLambda
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref BuildApprovalSNSTopic
+    Type: AWS::Lambda::Permission
+
+  ContainerImageApprovalLambda:
+    Properties:
+      FunctionName: !Sub ${ProjectDeploymentName}-image-approval # should match log-group suffix
+      Handler: index.lambda_handler
+      Timeout: 60
+      Role: !GetAtt ContainerImageApprovalLambdaExecutionRole.Arn
+      Runtime: python3.9
+      Environment:
+        Variables:
+          CODEPIPELINE_NAME: !Ref BuildProjectPipeline
+          STAGE_NAME: ImageScanStage
+          ACTION_NAME: ContainerImageApproval
+      Code:
+        ZipFile: |
+          import logging
+          import string
+          import boto3
+          import traceback
+          import os
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          pipeline_name = os.environ['CODEPIPELINE_NAME']
+          stage_name = os.environ['STAGE_NAME']
+          action_name = os.environ['ACTION_NAME']
+          
+          codepipeline = boto3.client('codepipeline')
+          
+          def get_status(event):
+            severity_count = event['detail']['finding-severity-counts']
+            if severity_count.get('CRITICAL') == None:
+              logger.info('no critical found')
+              return 'Approved'
+            else:
+              logger.info('Found {} critical'.format(severity_count['CRITICAL']))
+              return 'Rejected'
+          
+          
+          def lambda_handler(event, context):
+            try:
+              logger.info('got event {}'.format(event))
+              status = get_status(event)
+              response = codepipeline.get_pipeline_state(name=pipeline_name)
+              logger.info('get_pipeline_state returned {}'.format(response))
+              for stageState in response['stageStates']:
+                if stageState['stageName'] == stage_name:
+                  token = stageState['actionStates'][0]['latestExecution']['token']
+                  logger.info('token {}'.format(token))
+                  codepipeline.put_approval_result(
+                    pipelineName=pipeline_name,
+                    stageName=stage_name,
+                    actionName=action_name,
+                    result={
+                      'summary': 'Automatically approved by Lambda.',
+                      'status': status
+                    },
+                    token=token
+                  )
+            except Exception:
+              logger.info('Exception {}'.format(traceback.format_exc()))
+    DependsOn: ContainerImageApprovalLambdaLogGroup
+    Type: AWS::Lambda::Function
+
+  ContainerImageApprovalLambdaLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectDeploymentName}-image-approval
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  ContainerImageApprovalLambdaExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: lambda-s3-codepipeline-full-access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: codepipeline:* # should more least priviledged
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  ContainerImageApprovalEventRule:
+    Properties:
+      EventPattern:
+        source:
+          - aws.ecr
+        detail-type:
+          - "ECR Image Scan"
+        detail:
+          scan-status:
+            - "COMPLETE"
+      Targets:
+        - Arn: !GetAtt ContainerImageApprovalLambda.Arn
+          Id: !Ref ContainerImageApprovalLambda
+    Type: AWS::Events::Rule
+
+  PermissionForEventsToInvokeLambda:
+    Properties:
+      FunctionName: !Ref ContainerImageApprovalLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ContainerImageApprovalEventRule.Arn
+    Type: AWS::Lambda::Permission
+
+  #####################################
+  # Starts the pipeline at each commit
+  # Pull request validation
+  #####################################
+
+  CiCdUtils:
+    Properties:
+      ProjectName: !Ref ProjectName
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      DeploymentName: !Ref DeploymentName
+      CodeBuildServiceRole: !Ref CodeBuildServiceRole
+      ArtifactOutputBucket: !Ref ArtifactOutputBucket
+      BranchName: !Ref BranchName
+      ProjectPipeline: !Ref BuildProjectPipeline
+    Type: Atomicity::CiCd::Utils::MODULE
+
+  ##########
+  # Cleanup
+  ##########
+
+  Cleanup:
+    Properties:
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      ContainerImageRegistries: !Ref ContainerImageRepository
+      BucketNames: !Ref ArtifactOutputBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE
+
+Outputs:
+  ArtifactOutputBucket:
+    Value: !GetAtt ArtifactOutputBucket.RegionalDomainName

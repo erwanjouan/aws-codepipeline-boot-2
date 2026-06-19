@@ -1,0 +1,87 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>Exam guide</title>
+
+    <link rel="stylesheet" href="dist/reset.css">
+    <link rel="stylesheet" href="dist/reveal.css">
+    <link rel="stylesheet" href="dist/theme/black.css">
+
+    <!-- Theme used for syntax highlighted code -->
+    <link rel="stylesheet" href="plugin/highlight/monokai.css">
+    <style>
+        .reveal section div {
+            font-size: 30px; !important
+      }
+
+
+    </style>
+</head>
+<body>
+<div class="reveal">
+    <div class="slides">
+
+        <section>
+            <h3 th:text="${exam.name}">exam</h3>
+        </section>
+
+        <!-- Loop over domains -->
+        <section th:each="domain:${exam.domains}">
+            <section>
+                <h5>Domain</h5>
+                <h5>[[${domain.id}]]</h5>
+                <h3>[[${domain.name}]]</h3>
+            </section>
+
+            <!-- Loop over taskStatements -->
+            <th:block th:each="taskStatement:${domain.taskStatements}">
+                <section>
+                    <h5>Task statement</h5>
+                    <h5>[[${taskStatement.id}]]</h5>
+                    <h3>[[${taskStatement.name}]]</h3>
+                </section>
+                <section>
+                    <h5>Knowledge of</h5>
+                    <!-- Loop over knowledgeOf -->
+                    <th:block th:each="knowledgeOf:${taskStatement.knowledgeOf}">
+                        <div class="fragment fade-up">
+                            <span th:utext="${knowledgeOf.name}"></span>
+                        </div>
+                    </th:block>
+                </section>
+                <section>
+                    <h5>Skills in</h5>
+                    <!-- Loop over skillsIn -->
+                    <th:block th:each="skillsIn:${taskStatement.skillsIn}">
+                        <div class="fragment fade-up">
+                            <span th:utext="${skillsIn.name}"></span>
+                        </div>
+                    </th:block>
+                </section>
+            </th:block>
+        </section>
+    </div>
+</div>
+
+<script src="dist/reveal.js"></script>
+<script src="plugin/notes/notes.js"></script>
+<script src="plugin/markdown/markdown.js"></script>
+<script src="plugin/highlight/highlight.js"></script>
+<script>
+    // More info about initialization & config:
+    // - https://revealjs.com/initialization/
+    // - https://revealjs.com/config/
+    Reveal.initialize({
+        hash: true,
+
+        // Learn about plugins: https://revealjs.com/plugins/
+        plugins: [ RevealMarkdown, RevealHighlight, RevealNotes ]
+    });
+
+
+</script>
+</body>
+</html>

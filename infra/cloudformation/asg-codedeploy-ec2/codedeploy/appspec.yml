@@ -1,0 +1,22 @@
+version: 0.0
+os: linux
+files:
+  - source: app.jar
+    destination: /tmp
+hooks:
+  ApplicationStop:
+    - location: stop.sh
+      timeout: 180
+      runas: root
+  BeforeInstall:
+    - location: install-deps.sh
+      timeout: 180
+      runas: root
+  ApplicationStart:
+    - location: start.sh
+      timeout: 180
+      runas: root
+  ValidateService:
+    - location: validate.sh
+      timeout: 180
+      runas: root

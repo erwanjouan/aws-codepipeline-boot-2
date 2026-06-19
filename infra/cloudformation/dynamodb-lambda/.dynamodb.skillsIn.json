@@ -1,0 +1,79 @@
+{"Item":{"Id":{"S": "1.1.S.1"},"Name":{"S": "Configuring code, image, and artifact repositories"},"Parent":{"S": "1.1"}}}
+{"Item":{"Id":{"S": "1.1.S.2"},"Name":{"S": "Using version control to integrate pipelines with application environments"},"Parent":{"S": "1.1"}}}
+{"Item":{"Id":{"S": "1.1.S.3"},"Name":{"S": "Setting up build processes (for example AWS CodeBuild)"},"Parent":{"S": "1.1"}}}
+{"Item":{"Id":{"S": "1.1.S.4"},"Name":{"S": "Managing build and deployment secrets (for example, AWS Secrets Manager, AWS Systems Manager, Parameter Store)"},"Parent":{"S": "1.1"}}}
+{"Item":{"Id":{"S": "1.2.S.1"},"Name":{"S": "Running builds or tests when generating pull requests or code merges (for example, AWS CodeCommit, CodeBuild)"},"Parent":{"S": "1.2"}}}
+{"Item":{"Id":{"S": "1.2.S.2"},"Name":{"S": "Running load/stress tests, performance benchmarking, and application testing at scale"},"Parent":{"S": "1.2"}}}
+{"Item":{"Id":{"S": "1.2.S.3"},"Name":{"S": "Measuring application health based on application exit codes"},"Parent":{"S": "1.2"}}}
+{"Item":{"Id":{"S": "1.2.S.4"},"Name":{"S": "Automating unit tests and code coverage"},"Parent":{"S": "1.2"}}}
+{"Item":{"Id":{"S": "1.2.S.5"},"Name":{"S": "Invoking AWS services in a pipeline for testing"},"Parent":{"S": "1.2"}}}
+{"Item":{"Id":{"S": "1.3.S.1"},"Name":{"S": "Creating and configuring artifact repositories (for example, AWS CodeArtifact, Amazon S3, Amazon Elastic Container Registry [Amazon ECR])"},"Parent":{"S": "1.3"}}}
+{"Item":{"Id":{"S": "1.3.S.2"},"Name":{"S": "Configuring build tools for generating artifacts (for example, CodeBuild, AWS Lambda)"},"Parent":{"S": "1.3"}}}
+{"Item":{"Id":{"S": "1.3.S.3"},"Name":{"S": "Automating Amazon EC2 instance and container image build processes (for example, EC2 Image Builder)"},"Parent":{"S": "1.3"}}}
+{"Item":{"Id":{"S": "1.4.S.1"},"Name":{"S": "Configuring security permissions to allow access to artifact repositories (for example, AWS Identity and Access Management [IAM], CodeArtifact)"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "1.4.S.2"},"Name":{"S": "Configuring deployment agents (for example, CodeDeploy agent)"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "1.4.S.3"},"Name":{"S": "Troubleshooting deployment issues"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "1.4.S.4"},"Name":{"S": "Using different deployment methods (for example, blue/green, canary)"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "2.1.S.1"},"Name":{"S": "Composing and deploying IaC templates (for example, AWS Serverless Application Model [AWS SAM], AWS CloudFormation, AWS Cloud Development Kit [AWS CDK])"},"Parent":{"S": "2.1"}}}
+{"Item":{"Id":{"S": "2.1.S.2"},"Name":{"S": "Applying AWS CloudFormation StackSets across multiple accounts and AWS Regions"},"Parent":{"S": "2.1"}}}
+{"Item":{"Id":{"S": "2.1.S.3"},"Name":{"S": "Determining optimal configuration management services (for example, AWS OpsWorks, AWS Systems Manager, AWS Config, AWS AppConfig)"},"Parent":{"S": "2.1"}}}
+{"Item":{"Id":{"S": "2.1.S.4"},"Name":{"S": "Implementing infrastructure patterns, governance controls, and security standards into reusable IaC templates (for example, AWS Service Catalog, CloudFormation modules, AWS CDK)"},"Parent":{"S": "2.1"}}}
+{"Item":{"Id":{"S": "2.2.S.1"},"Name":{"S": "Standardizing and automating account provisioning and configuration"},"Parent":{"S": "2.2"}}}
+{"Item":{"Id":{"S": "2.2.S.2"},"Name":{"S": "Creating, consolidating, and centrally managing accounts (for example, AWS Organizations, AWS Control Tower)"},"Parent":{"S": "2.2"}}}
+{"Item":{"Id":{"S": "2.2.S.3"},"Name":{"S": "Applying IAM solutions for multi-account and complex organization structures (for example, SCPs, assuming roles)"},"Parent":{"S": "2.2"}}}
+{"Item":{"Id":{"S": "2.2.S.4"},"Name":{"S": "Implementing and developing governance and security controls at scale (AWS Config, AWS Control Tower, AWS Security Hub, Amazon Detective, Amazon GuardDuty, AWS Service Catalog, SCPs)"},"Parent":{"S": "2.2"}}}
+{"Item":{"Id":{"S": "2.3.S.1"},"Name":{"S": "Automating system inventory, configuration, and patch management (for example, Systems Manager, AWS Config)"},"Parent":{"S": "2.3"}}}
+{"Item":{"Id":{"S": "2.3.S.2"},"Name":{"S": "Developing Lambda function automations for complex scenarios (for example, AWS SDKs, Lambda, AWS Step Functions)"},"Parent":{"S": "2.3"}}}
+{"Item":{"Id":{"S": "2.3.S.3"},"Name":{"S": "Automating the configuration of software applications to the desired state (for example, OpsWorks, Systems Manager State Manager)"},"Parent":{"S": "2.3"}}}
+{"Item":{"Id":{"S": "2.3.S.4"},"Name":{"S": "Maintaining software compliance (for example, Systems Manager)"},"Parent":{"S": "2.3"}}}
+{"Item":{"Id":{"S": "3.1.S.1"},"Name":{"S": "Translating business requirements into technical resiliency needs"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.1.S.2"},"Name":{"S": "Identifying and remediating single points of failure in existing workloads"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.1.S.3"},"Name":{"S": "Enabling cross-Region solutions where available (for example, Amazon DynamoDB, Amazon RDS, Amazon Route 53, Amazon S3, Amazon CloudFront)"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.1.S.4"},"Name":{"S": "Configuring load balancing to support cross-AZ services"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.1.S.5"},"Name":{"S": "Configuring applications and related services to support multiple Availability Zones and Regions while minimizing downtime"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.2.S.1"},"Name":{"S": "Identifying and remediating scaling issues"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.2.S.2"},"Name":{"S": "Identifying and implementing appropriate auto scaling, load balancing, and caching solutions"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.2.S.3"},"Name":{"S": "Deploying container-based applications (for example, Amazon ECS, Amazon EKS)"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.2.S.4"},"Name":{"S": "Deploying workloads in multiple AWS Regions for global scalability"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.2.S.5"},"Name":{"S": "Configuring serverless applications (for example, Amazon API Gateway, Lambda, AWS Fargate)"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.3.S.1"},"Name":{"S": "Testing failover of Multi-AZ/multi-Region workloads (for example, Amazon RDS, Amazon Aurora, Route 53, CloudFront)"},"Parent":{"S": "3.3"}}}
+{"Item":{"Id":{"S": "3.3.S.2"},"Name":{"S": "Identifying and implementing appropriate cross-Region backup and recovery strategies (for example, AWS Backup, Amazon S3, Systems Manager)"},"Parent":{"S": "3.3"}}}
+{"Item":{"Id":{"S": "3.3.S.3"},"Name":{"S": "Configuring a load balancer to recover from backend failure"},"Parent":{"S": "3.3"}}}
+{"Item":{"Id":{"S": "4.1.S.1"},"Name":{"S": "Securely storing and managing logs"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.S.2"},"Name":{"S": "Creating CloudWatch metrics from log events by using metric filters"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.S.3"},"Name":{"S": "Creating CloudWatch metric streams (for example, Amazon S3 or Amazon Kinesis Data Firehose options)"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.S.4"},"Name":{"S": "Collecting custom metrics (for example, using the CloudWatch agent)"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.S.5"},"Name":{"S": "Managing log storage lifecycles (for example, S3 lifecycles, CloudWatch log group retention)"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.S.6"},"Name":{"S": "Processing log data by using CloudWatch log subscriptions (for example, Kinesis, Lambda, Amazon OpenSearch Service)"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.S.7"},"Name":{"S": "Searching log data by using filter and pattern syntax or CloudWatch Logs Insights"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.S.8"},"Name":{"S": "Configuring encryption of log data (for example, AWS KMS)"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.2.S.1"},"Name":{"S": "Building CloudWatch dashboards and Amazon QuickSight visualizations"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.S.2"},"Name":{"S": "Associating CloudWatch alarms with CloudWatch metrics (standard and custom)"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.S.3"},"Name":{"S": "Configuring AWS X-Ray for different services (for example, containers, API Gateway, Lambda)"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.S.4"},"Name":{"S": "Analyzing real-time log streams (for example, using Kinesis Data Streams)"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.S.5"},"Name":{"S": "Analyzing logs with AWS services (for example, Amazon Athena, CloudWatch Logs Insights)"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.3.S.1"},"Name":{"S": "Configuring solutions for auto scaling (for example, DynamoDB, EC2 Auto Scaling groups, RDS storage auto scaling, ECS capacity provider)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.S.2"},"Name":{"S": "Creating CloudWatch custom metrics and metric filters, alarms, and notifications (for example, Amazon SNS, Lambda)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.S.3"},"Name":{"S": "Configuring S3 events to process log files (for example, by using Lambda), and deliver log files to another destination (for example, OpenSearch Service, CloudWatch Logs)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.S.4"},"Name":{"S": "Configuring EventBridge to send notifications based on a particular event pattern"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.S.5"},"Name":{"S": "Installing and configuring agents on EC2 instances (for example, AWS Systems Manager Agent [SSM Agent], CloudWatch agent)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.S.6"},"Name":{"S": "Configuring AWS Config rules to remediate issues"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.S.7"},"Name":{"S": "Configuring health checks (for example, Route 53, Application Load Balancer)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "5.1.S.1"},"Name":{"S": "Integrating AWS event sources (for example, AWS Health, EventBridge, CloudTrail, CloudWatch Events)"},"Parent":{"S": "5.1"}}}
+{"Item":{"Id":{"S": "5.1.S.2"},"Name":{"S": "Building event processing workflows (for example, Amazon Simple Queue Service [Amazon SQS], Kinesis, Amazon SNS, Lambda, Step Functions)"},"Parent":{"S": "5.1"}}}
+{"Item":{"Id":{"S": "5.2.S.1"},"Name":{"S": "Applying configuration changes to systems"},"Parent":{"S": "5.2"}}}
+{"Item":{"Id":{"S": "5.2.S.2"},"Name":{"S": "Modifying infrastructure configurations in response to events"},"Parent":{"S": "5.2"}}}
+{"Item":{"Id":{"S": "5.2.S.3"},"Name":{"S": "Remediating a non-desired system state"},"Parent":{"S": "5.2"}}}
+{"Item":{"Id":{"S": "5.3.S.1"},"Name":{"S": "Analyzing failed deployments (for example, AWS CodePipeline, CodeBuild, CodeDeploy, CloudFormation, CloudWatch synthetic monitoring)"},"Parent":{"S": "5.3"}}}
+{"Item":{"Id":{"S": "5.3.S.2"},"Name":{"S": "Analyzing incidents regarding failed processes (for example, auto scaling, Amazon ECS, Amazon EKS)"},"Parent":{"S": "5.3"}}}
+{"Item":{"Id":{"S": "6.1.S.1"},"Name":{"S": "Designing policies to enforce least privilege access"},"Parent":{"S": "6.1"}}}
+{"Item":{"Id":{"S": "6.1.S.2"},"Name":{"S": "Implementing role-based and attribute-based access control patterns"},"Parent":{"S": "6.1"}}}
+{"Item":{"Id":{"S": "6.1.S.3"},"Name":{"S": "Automating credential rotation for machine identities (for example, Secrets Manager)"},"Parent":{"S": "6.1"}}}
+{"Item":{"Id":{"S": "6.1.S.4"},"Name":{"S": "Managing permissions to control access to human and machine identities (for example, enabling multi-factor authentication [MFA], AWS Security Token Service [AWS STS], IAM profiles)"},"Parent":{"S": "6.1"}}}
+{"Item":{"Id":{"S": "6.2.S.1"},"Name":{"S": "Automating the application of security controls in multi-account and multi-Region environments (for example, Security Hub, Organizations, AWS Control Tower, Systems Manager)"},"Parent":{"S": "6.2"}}}
+{"Item":{"Id":{"S": "6.2.S.2"},"Name":{"S": "Combining security controls to apply defense in depth (for example, AWS Certificate Manager [ACM], AWS WAF, AWS Config, AWS Config rules, Security Hub, GuardDuty, security groups, network ACLs, Amazon Detective, Network Firewall)"},"Parent":{"S": "6.2"}}}
+{"Item":{"Id":{"S": "6.2.S.3"},"Name":{"S": "Automating the discovery of sensitive data at scale (for example, Amazon Macie)"},"Parent":{"S": "6.2"}}}
+{"Item":{"Id":{"S": "6.2.S.4"},"Name":{"S": "Encrypting data in transit and data at rest (for example, AWS KMS, AWS CloudHSM, ACM)"},"Parent":{"S": "6.2"}}}
+{"Item":{"Id":{"S": "6.3.S.1"},"Name":{"S": "Implementing robust security auditing"},"Parent":{"S": "6.3"}}}
+{"Item":{"Id":{"S": "6.3.S.2"},"Name":{"S": "Configuring alerting based on unexpected or anomalous security events"},"Parent":{"S": "6.3"}}}
+{"Item":{"Id":{"S": "6.3.S.3"},"Name":{"S": "Analyzing logs, metrics, and security findings"},"Parent":{"S": "6.3"}}}

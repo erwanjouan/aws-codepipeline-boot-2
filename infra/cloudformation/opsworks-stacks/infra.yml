@@ -1,0 +1,333 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed on Opsworks stacks behind an ALB
+Parameters:
+  ProjectName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  AlbPort:
+    Type: String
+    Default: 80
+  InstancePort:
+    Type: String
+    Default: 8080
+  DeploymentName:
+    Type: String
+  ArtifactOutputBucket:
+    Type: String
+
+Resources:
+
+  Network:
+    Type: Atomicity::Vpc::Internet::MODULE
+
+  ##########################
+  # Classic Load Balancer
+  ##########################
+
+  ALBSecurityGroup:
+    Properties:
+      GroupDescription: allow access to ALB from internet
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref AlbPort
+          ToPort: !Ref AlbPort
+          CidrIp: 0.0.0.0/0
+    Type: AWS::EC2::SecurityGroup
+
+  ApplicationLoadBalancer:
+    Properties:
+      Listeners:
+        - InstancePort: !Ref InstancePort
+          InstanceProtocol: HTTP
+          LoadBalancerPort: !Ref AlbPort
+          Protocol: HTTP
+      Scheme: internet-facing
+      CrossZone: True
+      # noinspection YamlUnresolvedReferences
+      Subnets: [ !Ref NetworkPublicSubnet1, !Ref NetworkPublicSubnet2 ] # Should be public
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+    # noinspection YamlUnresolvedReferences
+    DependsOn: NetworkGatewayToInternet
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+
+  ##########################
+  # Opsworks Stacks
+  ##########################
+
+  Ec2Role:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Description: Opswork EC2 role to download artif and register to stack
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Sid: S3Permission
+                Effect: Allow
+                Action:
+                  - s3:GetObject*
+                  - opsworks:*
+                Resource: "*"
+            Version: '2012-10-17'
+          PolicyName: s3Policy
+    Type: AWS::IAM::Role
+
+  InstanceProfile:
+    Properties:
+      Roles:
+        - !Ref Ec2Role
+    Type: AWS::IAM::InstanceProfile
+
+  ServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - opsworks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Description: Opswork service role
+      Policies:
+        - PolicyName: opsworkServicePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:GetMetricStatistics
+                  - ec2:*
+                  - ecs:*
+                  - elasticloadbalancing:*
+                  - iam:PassRole
+                  - iam:GetRolePolicy
+                  - iam:ListInstanceProfiles
+                  - iam:ListRoles
+                  - iam:ListUsers
+                  - rds:*
+                Resource: "*"
+    Type: AWS::IAM::Role
+
+  OpsworkStack:
+    Properties:
+      DefaultInstanceProfileArn: !GetAtt InstanceProfile.Arn
+      # noinspection YamlUnresolvedReferences
+      DefaultSubnetId: !Ref NetworkPublicSubnet1
+      Name: !Ref ProjectName
+      ServiceRoleArn: !GetAtt ServiceRole.Arn
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      DefaultOs: Amazon Linux 2
+      ConfigurationManager:
+        Name: Chef
+        Version: 12
+      UseCustomCookbooks: True
+      CustomCookbooksSource:
+        Type: s3
+        Url: !Sub https://${ArtifactOutputBucket}.s3.${AWS::Region}.amazonaws.com/${ProjectVersion}/spring_boot_cookbook.zip
+    Type: AWS::OpsWorks::Stack
+
+  OpsWorksLayer:
+    Properties:
+      AutoAssignElasticIps: true
+      AutoAssignPublicIps: true
+      EnableAutoHealing: false
+      Name: !Ref ProjectName
+      Shortname: !Ref ProjectName
+      CustomSecurityGroupIds:
+        - !GetAtt OpsWorksInstanceSecurityGroup.GroupId
+      CustomRecipes:
+        Setup:
+          - spring_boot_cookbook::setup
+        Deploy:
+          - spring_boot_cookbook::deploy
+      CustomJson: !Sub |
+        {
+          "artifact_bucket": "${ArtifactOutputBucket}",
+          "git_sha1": "${ProjectVersion}",
+          "spring_profiles_active": "${DeploymentName}"
+        }
+      StackId: !Ref OpsworkStack
+      Type: custom
+    Type: AWS::OpsWorks::Layer
+
+  OpsWorksApp:
+    Properties:
+      Name: !Ref ProjectName
+      Environment:
+        - Key: SPRING_PROFILES_ACTIVE
+          Value: !Ref DeploymentName
+      AppSource:
+        Type: s3
+        Url: !Sub https://${ArtifactOutputBucket}.s3.${AWS::Region}.amazonaws.com/${ProjectVersion}/app.jar
+      StackId: !Ref OpsworkStack
+      Type: other
+    Type: AWS::OpsWorks::App
+
+  OpsWorksInstance1:
+    Properties:
+      InstanceType: t2.medium
+      SshKeyName: k2
+      # noinspection YamlUnresolvedReferences
+      SubnetId: !Ref NetworkPublicSubnet1
+      RootDeviceType: ebs
+      LayerIds: [ !Ref OpsWorksLayer ]
+      StackId: !Ref OpsworkStack
+      VirtualizationType: hvm
+    Type: AWS::OpsWorks::Instance
+
+  # Cloudformation Macros can be used to deploy several instances from same definition
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/template-macros.html
+  OpsWorksInstance2:
+    Properties:
+      InstanceType: t2.medium
+      SshKeyName: k2
+      # noinspection YamlUnresolvedReferences
+      SubnetId: !Ref NetworkPublicSubnet2
+      RootDeviceType: ebs
+      LayerIds: [ !Ref OpsWorksLayer ]
+      StackId: !Ref OpsworkStack
+      VirtualizationType: hvm
+    Type: AWS::OpsWorks::Instance
+
+  OpsWorksInstanceSecurityGroup:
+    Properties:
+      GroupDescription: Allows access to EC2 from Internet
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: !Ref InstancePort
+          ToPort: !Ref InstancePort
+          CidrIp: 0.0.0.0/0
+    Type: AWS::EC2::SecurityGroup
+
+  ElasticLoadBalancerAttachment:
+    Properties:
+      ElasticLoadBalancerName: !Ref ApplicationLoadBalancer
+      LayerId: !Ref OpsWorksLayer
+    Type: AWS::OpsWorks::ElasticLoadBalancerAttachment
+
+  ##########################
+  # Removes security groups created by OpsWorks but not decommissioned
+  ##########################
+
+  RemoveSgLambda:
+    Properties:
+      Handler: index.lambda_handler
+      Timeout: 60
+      Role: !GetAtt RemoveSgExecutionRole.Arn
+      Runtime: python3.9
+      Environment:
+        Variables:
+          # noinspection YamlUnresolvedReferences
+          VPC_ID: !Ref NetworkVPC
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import cfnresponse
+          import traceback
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          ec2 = boto3.client('ec2')
+          vpc_id =  os.environ['VPC_ID']
+          
+          def purge_opsworks_security_groups():
+              sgs = ec2.describe_security_groups(Filters=[
+                    {
+                      'Name': 'vpc-id',
+                      'Values': [vpc_id]
+                    },
+                    {
+                      'Name': 'group-name',
+                      'Values': ['*OpsWorks*']
+                    },
+              ])
+              if sgs['SecurityGroups'] is not None:
+                for sg in sgs['SecurityGroups']:
+                  try:
+                      resp = ec2.delete_security_group(GroupId=sg['GroupId'])
+                      logger.info("[OK] Deleted security group %s\n" % resp)
+                  except Exception as e:
+                      logger.info("Exception when deleting security group: %s\n" % e)
+
+
+          def lambda_handler(event, context):
+            responseData = {}
+            try:
+              logger.info('got event {}'.format(event))
+              if event['RequestType'] is not None and event['RequestType'] in ['Delete']:
+                  purge_opsworks_security_groups()
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, 'CustomResourcePhysicalID')
+            except Exception:
+              # Sending FAILED signal to CloudFormation
+              logger.info('Exception {}'.format(traceback.format_exc()))
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, 'CustomResourcePhysicalID')
+    Type: AWS::Lambda::Function
+
+  RemoveSgExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: lambda-parameter-store
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSecurityGroupRules
+                  - ec2:DescribeTags
+                  - ec2:DeleteSecurityGroup
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  RemoveSgCustomResource:
+    Properties:
+      ServiceToken: !GetAtt RemoveSgLambda.Arn
+    Type: Custom::UpdateParameterStoreLambda
+
+Outputs:
+  ApiEndpointUrl:
+    Value: !Sub
+      - "${LbDNSName}/api"
+      - LbDNSName: !GetAtt 'ApplicationLoadBalancer.DNSName'
+  WatchServiceEndpoint:
+    Value: !Sub
+      - http://${EndpointURL}/${DeploymentName}
+      - EndpointURL: !GetAtt 'ApplicationLoadBalancer.DNSName'

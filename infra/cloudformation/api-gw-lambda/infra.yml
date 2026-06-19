@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed with APIGateway/Lambda with
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  ApiGatewayDevStageName:
+    Type: String
+    AllowedPattern: "[a-z0-9]+"
+    Default: dev
+  ResourceEndpoint:
+    Type: String
+    AllowedPattern: "[a-z0-9]+"
+    Default: api
+  LambdaAlias:
+    Type: String
+    Default: alias
+  SpringProfilesActive:
+    Type: String
+  ArtifactName:
+    Type: String
+  ArtifactBucket:
+    Type: String
+
+Resources:
+
+  ##########################
+  # Lambda
+  ##########################
+
+  LambdaExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSLambda_ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+    Type: AWS::IAM::Role
+
+  LambdaFunction:
+    Properties:
+      FunctionName: !Ref ProjectDeploymentName # eases resolution in application code
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: bluegreen.StreamLambdaHandler::handleRequest # code dependent
+      Runtime: java17
+      Timeout: 60
+      MemorySize: 4096 # Java...
+      TracingConfig:
+        Mode: Active # enable X-Ray
+      Code:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Sub '${ProjectVersion}/${ArtifactName}' # last build version
+      SnapStart:
+        ApplyOn: PublishedVersions
+      Environment:
+        Variables:
+          SPRING_PROFILES_ACTIVE: !Ref SpringProfilesActive
+          PROJECT_DEPLOYMENT_NAME: !Ref ProjectDeploymentName
+    DependsOn: LambdaFunctionLogGroup
+    Type: AWS::Lambda::Function
+
+  LambdaFunctionLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  LambdaDevAlias:
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      FunctionVersion: !GetAtt LambdaVersion.Version
+      Name: !Ref LambdaAlias
+    Type: AWS::Lambda::Alias
+
+  LambdaVersion:
+    Properties:
+      FunctionName: !Ref LambdaFunction
+    Type: AWS::Lambda::Version
+
+  ##########################
+  # Api Gateway
+  ##########################
+
+  ApiGateway:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      Description: !Ref ProjectDeploymentName
+    Type: AWS::ApiGateway::RestApi
+
+  ProxyResource:
+    Properties:
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      RestApiId: !Ref ApiGateway
+      PathPart: '{proxy+}'
+    Type: AWS::ApiGateway::Resource
+
+  ApiGatewayProxyMethod:
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: ANY
+      ResourceId: !Ref ProxyResource
+      RestApiId: !Ref ApiGateway
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        IntegrationResponses:
+          - StatusCode: 200
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}:${!stageVariables.lambdaAlias}/invocations
+          - lambdaArn: !GetAtt LambdaFunction.Arn
+    Type: AWS::ApiGateway::Method
+
+  ApiGatewayDeployment:
+    Properties:
+      RestApiId: !Ref ApiGateway
+    DependsOn:
+      - "ApiGatewayProxyMethod"
+    Type: AWS::ApiGateway::Deployment
+
+  ApiGatewayStage:
+    Properties:
+      RestApiId: !Ref ApiGateway
+      DeploymentId: !Ref ApiGatewayDeployment
+      StageName: !Ref ApiGatewayDevStageName
+      TracingEnabled: True # X-Ray
+      Variables:
+        lambdaAlias: !Ref LambdaAlias
+    Type: AWS::ApiGateway::Stage
+
+  # ~ Resource based policy for Lambda
+
+  Permission:
+    Properties:
+      FunctionName: !Sub '${LambdaFunction.Arn}:${LambdaAlias}'
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/*/*'
+    DependsOn:
+      - LambdaDevAlias
+      - LambdaFunction
+      - ApiGateway
+    Type: AWS::Lambda::Permission
+
+Outputs:
+  ApiGatewayInvokeURL:
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayDevStageName}/${ResourceEndpoint}
+  WatchServiceEndpoint:
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayDevStageName}/${SpringProfilesActive}
+  LambdaArn:
+    Value: !GetAtt LambdaFunction.Arn
+  LambdaAlias:
+    Value: !Ref LambdaAlias
+  RestApiId:
+    Value: !Ref ApiGateway

@@ -1,0 +1,327 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation module for CiCd Utils
+Parameters:
+  ProjectName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  DeploymentName:
+    Type: String
+  CodeBuildServiceRole:
+    Type: String
+  ArtifactOutputBucket:
+    Type: String
+  BranchName:
+    Type: String
+  ProjectPipeline:
+    Type: String
+
+Resources:
+
+  ##################################################################
+  # Starts the CodePipeline pipeline at each commit on ${BranchName}
+  ##################################################################
+
+  CommitEventRole:
+    # Role for CommitEventRule
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+      Policies:
+        - PolicyName: StartPipelineExecution
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codepipeline:StartPipelineExecution
+                Resource: !Sub "arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${ProjectPipeline}"
+    Type: AWS::IAM::Role
+
+  CommitEventRule:
+    Properties:
+      EventPattern:
+        source:
+          - "aws.codecommit"
+        detail-type:
+          - "CodeCommit Repository State Change"
+        detail:
+          event:
+            - "referenceUpdated"
+          referenceName:
+            - !Ref BranchName
+      Targets:
+        - Arn: !Sub
+            - 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${BuildPipeline}'
+            - BuildPipeline: !Ref ProjectPipeline
+          Id: !Ref ProjectPipeline
+          RoleArn: !GetAtt 'CommitEventRole.Arn'
+    Type: AWS::Events::Rule
+
+  ##########################
+  # Pull request validation
+  ##########################
+
+  CodeBuildJavaProjectPR:
+    Properties:
+      Name: !Sub '${ProjectDeploymentName}-pr'
+      ServiceRole: !Ref CodeBuildServiceRole
+      Source:
+        Type: CODECOMMIT
+        Location: !Sub 'https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${ProjectName}' # CloneUrlHttp
+        BuildSpec: !Sub '${DeploymentName}/buildspec.yml'
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:6.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Type: PLAINTEXT
+            Value: !Ref AWS::Region
+          - Name: PROJECT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: PROJECT_DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectDeploymentName
+          - Name: DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref DeploymentName
+          - Name: AWS_ACCOUNT_ID
+            Type: PLAINTEXT
+            Value: !Ref AWS::AccountId
+      Cache:
+        Location: !Sub '${ArtifactOutputBucket}/cache'
+        Type: S3
+    Type: AWS::CodeBuild::Project
+
+  PipelinePREventRule:
+    Properties:
+      Description: "Trigger notifications based on CodeCommit PullRequests"
+      EventPattern:
+        source:
+          - "aws.codecommit"
+        detail-type:
+          - "CodeCommit Pull Request State Change"
+        resources:
+          - !Sub 'arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:${ProjectName}'
+        detail:
+          event:
+            - "pullRequestSourceBranchUpdated"
+            - "pullRequestCreated"
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt PullRequestFunction.Arn
+          Id: !Sub "${AWS::StackName}-pr"
+        - Arn: !GetAtt CodeBuildJavaProjectPR.Arn
+          RoleArn: !GetAtt CWERole.Arn # The ARN of the Cloudformation Role
+          Id: !Sub "${AWS::StackName}-pr1"
+          InputTransformer:
+            InputTemplate: |
+              {
+                "sourceVersion": <sourceVersion>,
+                "artifactsOverride": {"type": "NO_ARTIFACTS"},
+                "environmentVariablesOverride": [
+                   {
+                       "name": "pullRequestId",
+                       "value": <pullRequestId>,
+                       "type": "PLAINTEXT"
+                   },
+                   {
+                       "name": "repositoryName",
+                       "value": <repositoryName>,
+                       "type": "PLAINTEXT"
+                   },
+                   {
+                       "name": "sourceCommit",
+                       "value": <sourceCommit>,
+                       "type": "PLAINTEXT"
+                   },
+                   {
+                       "name": "destinationCommit",
+                       "value": <destinationCommit>,
+                       "type": "PLAINTEXT"
+                   }
+                ]
+              }
+            InputPathsMap:
+              sourceVersion: "$.detail.sourceCommit"
+              pullRequestId: "$.detail.pullRequestId"
+              repositoryName: "$.detail.repositoryNames[0]"
+              sourceCommit: "$.detail.sourceCommit"
+              destinationCommit: "$.detail.destinationCommit"
+    Type: AWS::Events::Rule
+
+  PullRequestFunction:
+    Properties:
+      Description: "Triggers CodeBuild on PR's in CodeCommit"
+      Handler: "index.lambda_handler"
+      MemorySize: 128
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 10
+      Code:
+        ZipFile: |
+          import datetime
+          import boto3
+
+          codecommit_client = boto3.client('codecommit')
+
+          def lambda_handler(event, context):
+              if event['detail']['event'] in ['pullRequestSourceBranchUpdated', 'pullRequestCreated']:
+                  pull_request_id = event['detail']['pullRequestId']
+                  repository_name = event['detail']['repositoryNames'][0]
+                  source_commit = event['detail']['sourceCommit']
+                  destination_commit = event['detail']['destinationCommit']
+
+                  codecommit_client.post_comment_for_pull_request(
+                    pullRequestId = pull_request_id,
+                    repositoryName = repository_name,
+                    beforeCommitId = source_commit,
+                    afterCommitId = destination_commit,
+                    content = '**Build started at {}**'.format(datetime.datetime.utcnow().time())
+                  )
+    Type: AWS::Lambda::Function
+
+  CodeBuildResultFuction:
+    Properties:
+      Description: "Triggers And updates CodeCommit with information from PR's"
+      Handler: "index.lambda_handler"
+      MemorySize: 128
+      Role: !GetAtt LambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 10
+      Code:
+        ZipFile: |
+          import boto3
+
+          codecommit_client = boto3.client('codecommit')
+
+          def lambda_handler(event, context):
+              for item in event['detail']['additional-information']['environment']['environment-variables']:
+                  if item['name'] == 'pullRequestId': pull_request_id = item['value']
+                  if item['name'] == 'repositoryName': repository_name = item['value']
+                  if item['name'] == 'sourceCommit': before_commit_id = item['value']
+                  if item['name'] == 'destinationCommit': after_commit_id = item['value']
+              s3_prefix = 's3-{0}'.format(event['region']) if event['region'] != 'us-east-1' else 's3'
+              for phase in event['detail']['additional-information']['phases']:
+                  if phase.get('phase-status') == 'FAILED':
+                      badge = 'https://{0}.amazonaws.com/codefactory-{1}-prod-default-build-badges/failing.svg'.format(s3_prefix, event['region'])
+                      content = '![Failing]({0} "Failing") - See the [Logs]({1})'.format(badge, event['detail']['additional-information']['logs']['deep-link'])
+                      break
+                  else:
+                      badge = 'https://{0}.amazonaws.com/codefactory-{1}-prod-default-build-badges/passing.svg'.format(s3_prefix, event['region'])
+                      content = '![Passing]({0} "Passing") - See the [Logs]({1})'.format(badge, event['detail']['additional-information']['logs']['deep-link'])
+
+              codecommit_client.post_comment_for_pull_request(
+                pullRequestId = pull_request_id,
+                repositoryName = repository_name,
+                beforeCommitId = before_commit_id,
+                afterCommitId = after_commit_id,
+                content = content
+              )
+    Type: AWS::Lambda::Function
+
+  LambdaRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Ref "LambdaManagedPolicy"
+      RoleName: "lambda-role"
+    Type: AWS::IAM::Role
+
+  LambdaManagedPolicy:
+    Properties:
+      Description: "Lambda Policy used for this stack"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "codebuild:*"
+              - "codecommit:*"
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+              - "logs:GetLogEvents"
+            Resource: "*"
+    Type: AWS::IAM::ManagedPolicy
+
+  CWEManagedPolicy:
+    Properties:
+      Description: "CloudWatch Events Policy used for this stack"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "codebuild:StartBuild"
+            Resource: "*"
+    Type: AWS::IAM::ManagedPolicy
+
+  CWERole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "events.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Ref CWEManagedPolicy
+    Type: AWS::IAM::Role
+
+  PipelineCCEventRule:
+    Properties:
+      Description: "Triggers when builds fail/pass in CodeBuild"
+      EventPattern:
+        source:
+          - "aws.codebuild"
+        detail-type:
+          - "CodeBuild Build State Change"
+        detail:
+          build-status:
+            - "FAILED"
+            - "SUCCEEDED"
+          project-name:
+            - !Ref CodeBuildJavaProjectPR
+      State: "ENABLED"
+      Targets:
+        - Arn: !GetAtt CodeBuildResultFuction.Arn
+          Id: !Sub "${AWS::StackName}-cc"
+    Type: AWS::Events::Rule
+
+  PermissionForEventsToInvokeLambdaPR:
+    Properties:
+      FunctionName: !Ref PullRequestFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt PipelinePREventRule.Arn
+    Type: AWS::Lambda::Permission
+
+  PermissionForEventsToInvokeLambdaCC:
+    Properties:
+      FunctionName: !Ref CodeBuildResultFuction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt PipelineCCEventRule.Arn
+    Type: AWS::Lambda::Permission

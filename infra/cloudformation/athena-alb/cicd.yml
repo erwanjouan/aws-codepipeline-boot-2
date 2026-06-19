@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Base image with base agents
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  AlbPort:
+    Type: String
+    Default: 80
+  ElbAccountId:
+    Type: String
+    Default: 156460612806 # See https://docs.aws.amazon.com/elasticloadbalancing/latest/application/enable-access-logging.html#attach-bucket-policy
+
+Resources:
+
+  Network:
+    Type: Atomicity::Vpc::Internet::MODULE
+
+  ##########################
+  # ALB
+  ##########################
+
+  AlbAccessLogsBucket:
+    Type: AWS::S3::Bucket
+
+  BucketPolicy:
+    Properties:
+      Bucket: !Ref AlbAccessLogsBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${ElbAccountId}:root'
+            Action: 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::${AlbAccessLogsBucket}/AWSLogs/${AWS::AccountId}/*'
+    Type: AWS::S3::BucketPolicy
+
+  SecurityGroup:
+    Properties:
+      GroupDescription: Allows access to ALB from internet
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref AlbPort
+          ToPort: !Ref AlbPort
+          CidrIp: 0.0.0.0/0
+    Type: AWS::EC2::SecurityGroup
+
+  Instance:
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+        - Key: access_logs.s3.enabled
+          Value: true
+        - Key: access_logs.s3.bucket
+          Value: !Ref AlbAccessLogsBucket
+      # noinspection YamlUnresolvedReferences
+      Subnets: [ !Ref NetworkPublicSubnet1, !Ref NetworkPublicSubnet2 ] # Should be public
+      SecurityGroups:
+        - !Ref SecurityGroup
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+
+  # Create an AWS Glue database
+  GlueDatabase:
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Ref ProjectDeploymentName
+        Description: Database to hold tables for AWS Service logs logs
+    Type: AWS::Glue::Database
+
+  # IAM role for Glue crawler
+  GlueCrawlerRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+    Type: AWS::IAM::Role
+
+  # Glue crawler
+  GlueCrawler:
+    Properties:
+      DatabaseName: !Ref GlueDatabase
+      Role: !GetAtt GlueCrawlerRole.Arn
+      Targets:
+        S3Targets:
+          - Path: !Sub "s3://${AlbAccessLogsBucket}/"
+    Type: AWS::Glue::Crawler
+
+  # IAM role for crawler access to S3
+  CrawlerS3Role:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: s3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${AlbAccessLogsBucket}/*"
+    Type: AWS::IAM::Role
+
+  ##########
+  # Cleanup
+  ##########
+
+  Cleanup:
+    Properties:
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      ContainerImageRegistries: ''
+      BucketNames: !Ref AlbAccessLogsBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE

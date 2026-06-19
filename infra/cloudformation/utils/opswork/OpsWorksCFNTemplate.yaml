@@ -1,0 +1,1488 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+schemaVersion: '1.0'
+description: 'OpsWorks V2 CloudFormation Document'
+templateBody:
+  AWSTemplateFormatVersion: '2010-09-09'
+  Description: 'OpsWorks V2 CloudFormation Stack'
+  Parameters:
+    LaunchTemplateId:
+      Description: Launch template ID.
+      Type: String
+      Default: {LaunchTemplateId}
+      ConstraintDescription: Must be a valid launch template ID.
+    LaunchTemplateVersion:
+      Description: Launch template version.
+      Type: String
+      Default: {LaunchTemplateVersion}
+      ConstraintDescription: Must be a valid launch template version.
+    SubnetIds:
+      Description: Subnet IDs for which the Auto Scaling group should span.
+      Type: List<AWS::EC2::Subnet::Id>
+      Default: {SubnetIds}
+      ConstraintDescription: Must be a list of existing subnet IDs.
+    ALBVpcId:
+      Description: The Virtual Private Cloud ID for the Application
+      Type: String
+      Default: ""
+      ConstraintDescription: Must be the name of an existing VPC. Only required if the LBType parameter value is.
+    LoadBalancerAccessLogsBucket:
+      Description: The S3 bucket to which your load balancer publishes access logs. An appropriate bucket policy should be in place which enables access logs to be published to your chosen prefix. If this is set to a blank string, load balancer access logs will be disabled.
+      Type: String
+      Default: {LoadBalancerAccessLogsBucket}
+      ConstraintDescription: A valid S3 bucket, with appropriate policies, to which the load balancer publishes logs.
+    LoadBalancerAccessLogsPrefix:
+      Description: The S3 bucket prefix to which your load balancer publishes logs. An appropriate bucket policy should be in place which enables access logs to be published to your chosen prefix. 
+      Type: String
+      Default: {LoadBalancerAccessLogsPrefix}
+      ConstraintDescription: A valid prefix string which will separate out logs.
+    LBType:
+      Description: The type of load balancer that will be created. Value can be ALB, CLASSIC or None (to skip creation of load balancer). 
+      Type: String
+      Default: {LBType}
+      AllowedValues:
+        - ALB
+        - CLASSIC
+        - None
+      ConstraintDescription: Must be one of the following ALB, CLASSIC or None
+    LBSecurityGroups:
+      Description: Security groups to attach to the load balancer.
+      Type: CommaDelimitedList
+      Default: "" 
+      ConstraintDescription: A list of security groups to be attached to the load balancer.
+    LBSubnets:
+      Description: Subnet IDs that the load balancer should span.
+      Type: CommaDelimitedList
+      Default: "" 
+      ConstraintDescription: Must be a list of existing subnet IDs. 
+    LBListener1Protocol:
+      Description: The protocol for the load balancer listener 1 to use. If the value is HTTPS, you must add a valid certificate ARN. 
+      Type: String
+      Default: HTTPS
+      ConstraintDescription: Must be one of the following GENEVE | HTTP | HTTPS | TCP | TCP_UDP | TLS | UDP
+    LBListener1CertificateArn:
+      Description: The ARN of an SSL certificate to be used if LBListener1Protocol is set to HTTPS. 
+      Type: String
+      Default: ""
+      ConstraintDescription: A valid SSL Certificate ARN. 
+    SetupApplyChefRecipesInput:
+      Description: The AWS-ApplyChefRecipes properties that are stored in the Setup Systems Manager parameter, and used in a Setup event. Properties should be represented by a valid JSON string. 
+                   For any sensitive characters, create a Systems Manager SecureString parameter. Enter as ssm-securestart:<paramatername>ssm-secureend. See example input. 
+                   When the property is not used, set as "". 
+                   {"SourceType":"Git", "SourceInfo":"{\"repository\":\"repository_url\",\"privateSSHKey\":\"ssm-securestart:sshkeyssm-secureend\"}", "RunList":"recipe[apply-chef-recipes-integtest-cookbook::configure]", "JsonAttributesSources":"", "JsonAttributesContent":"", "ChefClientVersion":"14", "ChefClientArguments":"", "WhyRun":"False", "ComplianceSeverity":"None", "ComplianceType":"Custom:Chef", "ComplianceReportBucket":""}
+      Type: String
+      ConstraintDescription: A valid JSON string. 
+    ConfigureApplyChefRecipesInput:
+      Description: The AWS-ApplyChefRecipes properties that are stored in the Configure Systems Manager parameter, and used in a Configure event. Properties should be represented by a valid JSON string. 
+                   For any sensitive characters, create a Systems Manager SecureString parameter. Enter as ssm-securestart:<paramatername>ssm-secureend. See example input. 
+                   When the property is not used, set as "". 
+                   {"SourceType":"Git", "SourceInfo":"{\"repository\":\"repository_url\",\"privateSSHKey\":\"ssm-securestart:sshkeyssm-secureend\"}", "RunList":"recipe[apply-chef-recipes-integtest-cookbook::configure]", "JsonAttributesSources":"", "JsonAttributesContent":"", "ChefClientVersion":"14", "ChefClientArguments":"", "WhyRun":"False", "ComplianceSeverity":"None", "ComplianceType":"Custom:Chef", "ComplianceReportBucket":""}
+      Type: String
+      ConstraintDescription: A valid JSON string. 
+    DeployApplyChefRecipesInput:
+      Description: The AWS-ApplyChefRecipes properties that are stored in the Deploy Systems Manager parameter, and used in a Deploy event. Properties should be represented by a valid JSON string. 
+                   For any sensitive characters, create a Systems Manager SecureString parameter. Enter as ssm-securestart:<paramatername>ssm-secureend. See example input. 
+                   When the property is not used, set as "". 
+                   {"SourceType":"Git", "SourceInfo":"{\"repository\":\"repository_url\",\"privateSSHKey\":\"ssm-securestart:sshkeyssm-secureend\"}", "RunList":"recipe[apply-chef-recipes-integtest-cookbook::configure]", "JsonAttributesSources":"", "JsonAttributesContent":"", "ChefClientVersion":"14", "ChefClientArguments":"", "WhyRun":"False", "ComplianceSeverity":"None", "ComplianceType":"Custom:Chef", "ComplianceReportBucket":""}
+      Type: String
+      ConstraintDescription: A valid JSON string. 
+    UndeployApplyChefRecipesInput:
+      Description: The AWS-ApplyChefRecipes properties that are stored in the Undeploy Systems Manager parameter, and used in a Undeploy event. Properties should be represented by a valid JSON string. 
+                   For any sensitive characters, create a Systems Manager SecureString parameter. Enter as ssm-securestart:<paramatername>ssm-secureend. See example input. 
+                   When the property is not used, set as "". 
+                   {"SourceType":"Git", "SourceInfo":"{\"repository\":\"repository_url\",\"privateSSHKey\":\"ssm-securestart:sshkeyssm-secureend\"}", "RunList":"recipe[apply-chef-recipes-integtest-cookbook::configure]", "JsonAttributesSources":"", "JsonAttributesContent":"", "ChefClientVersion":"14", "ChefClientArguments":"", "WhyRun":"False", "ComplianceSeverity":"None", "ComplianceType":"Custom:Chef", "ComplianceReportBucket":""}
+      Type: String
+      ConstraintDescription: A valid JSON string. 
+    TerminateApplyChefRecipesInput:
+      Description: The AWS-ApplyChefRecipes properties that are stored in the Terminate Systems Manager parameter, and used in a Terminate event. Properties should be represented by a valid JSON string. 
+                   For any sensitive characters, create a Systems Manager SecureString parameter. Enter as ssm-securestart:<paramatername>ssm-secureend. See example input. 
+                   When the property is not used, set as "". 
+                   {"SourceType":"Git", "SourceInfo":"{\"repository\":\"repository_url\",\"privateSSHKey\":\"ssm-securestart:sshkeyssm-secureend\"}", "RunList":"recipe[apply-chef-recipes-integtest-cookbook::configure]", "JsonAttributesSources":"", "JsonAttributesContent":"", "ChefClientVersion":"14", "ChefClientArguments":"", "WhyRun":"False", "ComplianceSeverity":"None", "ComplianceType":"Custom:Chef", "ComplianceReportBucket":""}
+      Type: String
+      ConstraintDescription: A valid JSON string. 
+    RunCommandLogsBucket:
+      Description: An S3 bucket where ApplyChefRecipes and MountEBSVolumes logs are sent.
+      Type: String
+      ConstraintDescription: A valid and existing S3 bucket.
+    RunCommandLogsPrefix:
+      Description: A prefix to be used for ApplyChefRecipes and MountEBSVolumes logs. Create a suitable lifecycle policy for this prefix, outside of this template.
+      Type: String
+      ConstraintDescription: A valid prefix for logs.
+    InstallSystemUpdatesOnBoot:
+      Description: True or false value to perform system updates on booting EC2 instances. 
+      Type: String
+      Default: "true"
+      AllowedValues:
+        - true
+        - false
+      ConstraintDescription: Must be either true or false.
+    EmailForErrors:
+      Description: The email address of an account or user to alert when ApplyChefRecipes fails to run on launching or terminating Auto Scaling group events. 
+                   After the process creates the subscription, it sends email asking the recipient to confirm the subscription. 
+                   If you do not provide an email address, the migration process does not create a subscription, and does not subscribe users to the SNS topic where the process posts errors.
+      Type: String
+      Default: ''
+      ConstraintDescription: Should be a valid email address that you can use to confirm a subscription.
+    ApplicationName:
+      Description: Custom application name used in resource group creation.
+      Type: String
+      Default: {ApplicationName}
+      ConstraintDescription: The name must be unique within the AWS Region.
+    EnableASGProtectedInstances:
+      Description: True or false value to enable Auto Scaling group EC2 protected instances via a custom termination policy (Lambda function). This policy will protect EC2 instances from various termination events which have the tag key protected_instance. 
+      Type: String
+      Default: "false"
+      AllowedValues:
+        - true
+        - false
+      ConstraintDescription: Must be either true or false.
+    DeviceNames:
+      Description: "Device names used within Amazon EC2. Enter device names separated by a space. For example, /dev/sdb /dev/sdf"
+      Type: String
+      Default: {DeviceNames}
+      ConstraintDescription: Must be valid device names. 
+    MountDirectories:
+      Description: "Mount point directories for the corresponding Elastic Block Store volumes. Enter mount directories separated by a space. For example: /mnt/sdb /mnt/sdf"
+      Type: String
+      Default: {MountDirectories}
+      ConstraintDescription: Must be valid mount directories. 
+    FileSystemTypes:
+      Description: "File system types that will be created on the provided Elastic Block Store devices. Enter file systems separated by a space. For example: ext4 xfs. If nothing is provided, xfs will be chosen as a file system type for all given Elastic Block Store devices."
+      Type: String
+      Default: {FileSystemTypes}
+      ConstraintDescription: Must be valid file system types. 
+  Conditions:
+    SubscribeEmail:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: EmailForErrors
+          - ''
+    CreateALBResources:
+      Fn::Equals:
+        - Ref: LBType
+        - ALB
+    CreateClassicELBResources:
+      Fn::Equals:
+        - Ref: LBType
+        - CLASSIC
+    NoLBResources:
+      Fn::Equals:
+        - Ref: LBType
+        - None
+    LoadBalancerAccessLogsEnabled:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: LoadBalancerAccessLogsBucket
+          - ''
+    UseCertificateLBListener1:
+      Fn::Equals:
+        - Ref: LBListener1Protocol
+        - HTTPS
+    IsApplicationNameProvided:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: ApplicationName
+          - ''
+    UseASGCustomTerminationPolicy:
+      Fn::Equals:
+        - Ref: EnableASGProtectedInstances
+        - true
+    SetupResource:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: SetupApplyChefRecipesInput
+          - ''
+    SetupAutomationResources:
+      Fn::Or:
+        - Condition: SetupResource
+        - Fn::And:
+          - Fn::Not:
+              - Fn::Equals:
+                - Ref: DeviceNames
+                - ''
+          - Fn::Not:
+              - Fn::Equals:
+                - Ref: MountDirectories
+                - ''
+        - Fn::Equals:
+          - Ref: InstallSystemUpdatesOnBoot
+          - "true"   
+    ConfigureAutomationResources:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: ConfigureApplyChefRecipesInput
+          - ''
+    DeployAutomationResources:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: DeployApplyChefRecipesInput
+          - '' 
+    UndeployAutomationResources:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: UndeployApplyChefRecipesInput
+          - '' 
+    TerminateAutomationResources:
+      Fn::Not:
+        - Fn::Equals:
+          - Ref: TerminateApplyChefRecipesInput
+          - '' 
+    SharedAutomationResources:
+      Fn::Or:
+        - Condition: SetupAutomationResources
+        - Condition: TerminateAutomationResources
+    AutomationAssumeRoleCondition:
+      Fn::Or:
+        - Condition: SharedAutomationResources
+        - Condition: ConfigureAutomationResources
+
+  Resources:
+    ApplicationAsg:
+      Type: AWS::AutoScaling::AutoScalingGroup
+      Properties:
+        LaunchTemplate: 
+          LaunchTemplateId: 
+            Ref: LaunchTemplateId
+          Version: 
+            Ref: LaunchTemplateVersion
+        LoadBalancerNames: 
+          Fn::If:
+            - CreateClassicELBResources
+            - - Ref: 
+                  ClassicELB
+            - - Ref: 
+                  AWS::NoValue 
+        TargetGroupARNs:
+          Fn::If:
+            - CreateALBResources
+            - - Ref: 
+                  ALBTargetGroup1
+            - - Ref: 
+                  AWS::NoValue 
+        MinSize: '0'
+        MaxSize: '0'
+        VPCZoneIdentifier:
+          Ref: SubnetIds
+        HealthCheckType:
+          Fn::If:
+            - NoLBResources
+            - EC2
+            - ELB
+        HealthCheckGracePeriod: 30
+        ServiceLinkedRoleARN:
+          Fn::Sub:
+            arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/autoscaling.amazonaws.com/${ASGServiceLinkedRole}
+        TerminationPolicies:
+          Fn::If:
+            - UseASGCustomTerminationPolicy
+            - - Fn::GetAtt: [CustomTerminationLambda, Arn]
+              - Default
+            - - Default
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+            PropagateAtLaunch: True
+      DependsOn: CustomTerminationLambdaPermission
+    AsgScaleUpPolicy:
+      Type: AWS::AutoScaling::ScalingPolicy
+      Properties:
+        AdjustmentType: ChangeInCapacity
+        AutoScalingGroupName:
+          Ref: ApplicationAsg
+        Cooldown: '60'
+        ScalingAdjustment: '1'
+    AsgScaleDownPolicy:
+      Type: AWS::AutoScaling::ScalingPolicy
+      Properties:
+        AdjustmentType: ChangeInCapacity
+        AutoScalingGroupName:
+          Ref: ApplicationAsg
+        Cooldown: '60'
+        ScalingAdjustment: "-1"
+
+    ALBLoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Condition: CreateALBResources
+      Properties:
+        LoadBalancerAttributes:
+          - Key: access_logs.s3.prefix
+            Value: 
+              Ref: LoadBalancerAccessLogsPrefix
+          - Key: access_logs.s3.bucket
+            Value: 
+              Ref: LoadBalancerAccessLogsBucket    
+          - Key: access_logs.s3.enabled
+            Value: 
+              Fn::If: 
+              - LoadBalancerAccessLogsEnabled   
+              - True
+              - False
+        Scheme: internet-facing
+        SecurityGroups:
+          Ref: LBSecurityGroups
+        Subnets:
+          Ref: LBSubnets
+        Type: application
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+    ClassicELB:  
+      Type: AWS::ElasticLoadBalancing::LoadBalancer
+      Condition: CreateClassicELBResources
+      Properties: 
+        AccessLoggingPolicy: 
+          EmitInterval: 60
+          Enabled: 
+            Fn::If: 
+              - LoadBalancerAccessLogsEnabled   
+              - True
+              - False    
+          S3BucketName:
+            Ref: LoadBalancerAccessLogsBucket
+          S3BucketPrefix: 
+            Ref: LoadBalancerAccessLogsPrefix
+        ConnectionDrainingPolicy: 
+          Enabled: False
+          Timeout: 300 
+        ConnectionSettings: 
+          IdleTimeout: 60
+        CrossZone: False
+        HealthCheck: 
+          HealthyThreshold: 10
+          Interval: 45
+          Target: HTTP:80/health.html
+          Timeout: 3
+          UnhealthyThreshold: 3
+        Listeners: 
+          - InstancePort: 80  
+            InstanceProtocol: HTTP
+            LoadBalancerPort: 443
+            PolicyNames: 
+              - 'ELBSecurityPolicy-2016-08'
+            Protocol: 
+              Ref: LBListener1Protocol
+            SSLCertificateId:
+              Fn::If:
+                - UseCertificateLBListener1
+                - Ref: LBListener1CertificateArn
+                - Ref: AWS::NoValue 
+        Policies: 
+          Fn::If: 
+            - UseCertificateLBListener1  
+            - - Attributes: 
+                - Name: Reference-Security-Policy
+                  Value: ELBSecurityPolicy-2016-08
+                PolicyName:
+                  Fn::Sub: ${AWS::StackName}-1-ssl-policy
+            - - Ref:
+                  AWS::NoValue 
+        Scheme: internet-facing
+        SecurityGroups: 
+          Ref: LBSecurityGroups
+        Subnets: 
+          Ref: LBSubnets
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+    ALBTargetGroup1:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Condition: CreateALBResources
+      Properties: 
+        HealthCheckEnabled: True
+        HealthCheckIntervalSeconds: 5
+        HealthCheckPath: /health
+        HealthCheckPort: 80
+        HealthCheckProtocol: HTTP
+        HealthCheckTimeoutSeconds: 3
+        HealthyThresholdCount: 3
+        Port: 80
+        Protocol: HTTP
+        TargetType: instance
+        UnhealthyThresholdCount: 3
+        VpcId:
+          Ref: ALBVpcId
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+    ALBListener1:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Condition: CreateALBResources
+      Properties: 
+        Certificates:
+          Fn::If:
+            - UseCertificateLBListener1
+            - - CertificateArn: 
+                  Ref: LBListener1CertificateArn
+            - - Ref: 
+                  AWS::NoValue 
+        DefaultActions:
+          - Type: forward
+            TargetGroupArn: 
+              Ref: ALBTargetGroup1 
+        LoadBalancerArn:
+          Ref: ALBLoadBalancer
+        Port: 443
+        Protocol:
+          Ref: LBListener1Protocol
+        SslPolicy: 
+          Fn::If:
+            - UseCertificateLBListener1
+            - ELBSecurityPolicy-2016-08
+            - Ref:
+                AWS::NoValue 
+
+    LaunchLifeCycleHook:
+      Type: AWS::AutoScaling::LifecycleHook
+      Condition: SetupAutomationResources
+      Properties:
+        AutoScalingGroupName:
+          Ref: ApplicationAsg
+        DefaultResult: CONTINUE
+        LifecycleTransition: autoscaling:EC2_INSTANCE_LAUNCHING
+        HeartbeatTimeout: 900
+    LaunchCloudWatchEvent:
+      Type: AWS::Events::Rule
+      Condition: SetupAutomationResources
+      Properties:
+        EventPattern:
+          source:
+            - aws.autoscaling
+          detail-type:
+            - EC2 Instance-launch Lifecycle Action
+          detail:
+            AutoScalingGroupName:
+              - Ref: ApplicationAsg
+        Targets:
+          - Arn:
+              Fn::Sub: arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${SetupAutomationCommand}:$DEFAULT
+            Id: target1
+            RoleArn:
+              Fn::GetAtt: [CloudWatchEventRole, Arn]
+            InputTransformer:
+              InputPathsMap:
+                InstanceId: "$.detail.EC2InstanceId"
+              InputTemplate: >
+                {"instanceId": [<InstanceId>]}
+    CompleteLifeCycleHookPolicy:
+      Type: AWS::IAM::ManagedPolicy
+      Condition: SharedAutomationResources
+      Properties: 
+        Description: 
+          Fn::Sub: Policy for completing lifecycle actions attached to ${ApplicationAsg}
+        ManagedPolicyName: 
+          Fn::Sub: CompleteLifeCycleHook${ApplicationAsg}Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - autoscaling:CompleteLifecycleAction
+              Resource:
+                Fn::Sub: arn:${AWS::Partition}:autoscaling:${AWS::Region}:${AWS::AccountId}:autoScalingGroup:*:autoScalingGroupName/${ApplicationAsg}
+        Roles: 
+          - Ref: AutomationAssumeRole        
+    PublishTopicPolicy:
+      Type: AWS::IAM::ManagedPolicy
+      Condition: SharedAutomationResources
+      Properties: 
+        ManagedPolicyName: 
+          Fn::Join:
+            - ''
+            - - 'Publish'
+              - Fn::GetAtt: [SNSTopic, TopicName]
+              - 'Policy'
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource:
+                Ref: SNSTopic
+        Roles: 
+          - Ref: AutomationAssumeRole             
+    TerminateLifeCycleHook:
+      Type: AWS::AutoScaling::LifecycleHook
+      Condition: TerminateAutomationResources
+      Properties:
+        AutoScalingGroupName:
+          Ref: ApplicationAsg
+        DefaultResult: CONTINUE
+        LifecycleTransition: autoscaling:EC2_INSTANCE_TERMINATING
+        HeartbeatTimeout: 900
+    TerminateCloudWatchEvent:
+      Type: AWS::Events::Rule
+      Condition: TerminateAutomationResources
+      Properties:
+        EventPattern:
+          source:
+            - aws.autoscaling
+          detail-type:
+            - EC2 Instance-terminate Lifecycle Action
+          detail:
+            AutoScalingGroupName:
+              - Ref: ApplicationAsg
+        Targets:
+          - Arn:
+              Fn::Sub: arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${TerminateAutomationCommand}:$DEFAULT
+            Id: target1
+            RoleArn:
+              Fn::GetAtt: [CloudWatchEventRole, Arn]
+            InputTransformer:
+              InputPathsMap:
+                InstanceId: "$.detail.EC2InstanceId"
+              InputTemplate: >
+                {"instanceId": [<InstanceId>]}
+    CloudWatchEventRole:
+      Type: AWS::IAM::Role
+      Condition: SharedAutomationResources
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - events.amazonaws.com
+              Action:
+                - sts:AssumeRole
+        Policies:
+          - PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ssm:StartAutomationExecution
+                  Resource:
+                    - Fn::If:
+                      - SetupAutomationResources
+                      - Fn::Sub: arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${SetupAutomationCommand}:$DEFAULT
+                      - Ref: AWS::NoValue
+                    - Fn::If:
+                      - TerminateAutomationResources
+                      - Fn::Sub: arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:automation-definition/${TerminateAutomationCommand}:$DEFAULT
+                      - Ref: AWS::NoValue
+            PolicyName: Start-SSM-Automation-Policy
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+
+    AutomationAssumeRole:
+      Type: AWS::IAM::Role
+      Condition: AutomationAssumeRoleCondition
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - ssm.amazonaws.com
+              Action:
+                - sts:AssumeRole
+        Policies:
+          - PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ssm:ListCommands
+                    - ssm:ListCommandInvocations
+                  Resource: '*'      
+                - Effect: Allow
+                  Action:
+                    - ssm:SendCommand
+                  Resource:
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-ApplyChefRecipes
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/MountEBSVolumes
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript
+                    - Fn::Sub: arn:${AWS::Partition}:ec2:*:*:instance/*
+            PolicyName: Start-SSM-Automation-Policy
+          - PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ssm:GetParameter
+                  Resource:
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ApplyChefRecipes-Preset/${AWS::StackName}/Setup
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ApplyChefRecipes-Preset/${AWS::StackName}/Configure
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ApplyChefRecipes-Preset/${AWS::StackName}/Deploy
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ApplyChefRecipes-Preset/${AWS::StackName}/Undeploy
+                    - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ApplyChefRecipes-Preset/${AWS::StackName}/Terminate
+            PolicyName: Get-SSM-Parameter
+          - PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ssm:DescribeInstanceInformation
+                  Resource: '*'
+            PolicyName: SSM-Agent-Verifycation-Policy
+          - PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ec2:DescribeVolumes
+                  Resource: '*'
+            PolicyName: EC2-Describe-Volumes
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+
+    SNSTopic: 
+      Type: AWS::SNS::Topic
+      Condition: SharedAutomationResources
+      Properties: 
+        FifoTopic: False
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+    SNSSubscription:
+      Type: AWS::SNS::Subscription
+      Condition: SharedAutomationResources
+      Condition: SubscribeEmail
+      Properties:
+        Endpoint:
+          Ref: EmailForErrors
+        Protocol: email
+        TopicArn:
+          Ref: SNSTopic
+
+    SetupSSMParameter:
+      Type: AWS::SSM::Parameter
+      Condition: SetupResource
+      Properties:
+        Name: 
+          Fn::Sub:  /ApplyChefRecipes-Preset/${AWS::StackName}/Setup
+        Type: String
+        Value: 
+          Ref: SetupApplyChefRecipesInput
+        Description: Systems Manager parameter that stores AWS-ApplyChefRecipes parameters that you need for setup.
+    ConfigureSSMParameter:
+      Type: AWS::SSM::Parameter
+      Condition: ConfigureAutomationResources
+      Properties:
+        Name: 
+          Fn::Sub:  /ApplyChefRecipes-Preset/${AWS::StackName}/Configure
+        Type: String
+        Value: 
+          Ref: ConfigureApplyChefRecipesInput
+        Description: Systems Manager parameter that stores AWS-ApplyChefRecipes parameters that you need for configure.
+    DeploySSMParameter:
+      Type: AWS::SSM::Parameter
+      Condition: DeployAutomationResources
+      Properties:
+        Name: 
+          Fn::Sub:  /ApplyChefRecipes-Preset/${AWS::StackName}/Deploy
+        Type: String
+        Value: 
+          Ref: DeployApplyChefRecipesInput
+        Description: Systems Manager parameter that stores AWS-ApplyChefRecipes parameters that you need for deploy.
+    UndeploySSMParameter:
+      Type: AWS::SSM::Parameter
+      Condition: UndeployAutomationResources
+      Properties:
+        Name: 
+          Fn::Sub:  /ApplyChefRecipes-Preset/${AWS::StackName}/Undeploy
+        Type: String
+        Value: 
+          Ref: UndeployApplyChefRecipesInput
+        Description: Systems Manager parameter that stores AWS-ApplyChefRecipes parameters that you need for undeploy.
+    TerminateSSMParameter:
+      Type: AWS::SSM::Parameter
+      Condition: TerminateAutomationResources
+      Properties:
+        Name: 
+          Fn::Sub:  /ApplyChefRecipes-Preset/${AWS::StackName}/Terminate
+        Type: String
+        Value: 
+          Ref: TerminateApplyChefRecipesInput
+        Description: Systems Manager parameter that stores AWS-ApplyChefRecipes parameters that you need for terminate.
+
+    SetupAutomationCommand:
+      Type: AWS::SSM::Document
+      Condition: SetupAutomationResources
+      Properties:
+        DocumentFormat: YAML
+        DocumentType: Automation
+        VersionName: 1.0
+        Content:
+          description: Automation document running Chef recipes during instance startup.
+          schemaVersion: '0.3'
+          assumeRole: 
+            Fn::GetAtt: [AutomationAssumeRole, Arn]
+          parameters:
+            instanceId:
+              type: String
+            installSystemUpdatesOnBoot:
+              type: String
+              default: 
+                Ref: InstallSystemUpdatesOnBoot
+            deviceNames:
+              type: String
+              default: 
+                Ref: DeviceNames
+            mountDirectories:
+              type: String
+              default: 
+                Ref: MountDirectories
+            applyChefRecipesPropertiesParameter:
+              type: String
+              default: 
+                Fn::If:
+                  - SetupResource
+                  - Fn::Sub: /ApplyChefRecipes-Preset/${AWS::StackName}/Setup
+                  - ""
+          mainSteps:
+            - name: sleep
+              action: aws:sleep
+              inputs:
+                Duration: PT1M
+            - name: systemupdates
+              action: 'aws:runCommand'
+              inputs:
+                DocumentName: AWS-RunShellScript
+                InstanceIds:
+                  - '{{instanceId}}'
+                Parameters:
+                  commands:
+                      - '#!/bin/bash'
+                      - ''
+                      - 'is_debian_family () {'
+                      - ' [ -e ''/etc/debian_version'' ]'
+                      - '}'
+                      - ''
+                      - 'is_redhat_family () {'
+                      - ' [ -e ''/etc/system-release'' ] || [ -e ''/etc/redhat-release'' ]'
+                      - '}'
+                      - ''
+                      - 'execute_with_retry () {'
+                      - ' echo "Executing with retry:" "$@"'
+                      - ' for i in 1 2; do "$@" && return; sleep 15; done'
+                      - ' echo "Bailing out, failed to execute: $@"'
+                      - ' exit'
+                      - '}'
+                      - ''
+                      - 'reboot_required () {'
+                      - ' if is_debian_family; then'
+                      - '   test -e /var/run/reboot-required'
+                      - ' elif is_redhat_family; then'
+                      - '   LATEST_INSTALLED_KERNEL=`rpm -q --last kernel | perl -pe ''s/^kernel-(\S+).*/$1/'' | head -1`'
+                      - '   CURRENTLY_USED_KERNEL=`uname -r`'
+                      - '   test "${LATEST_INSTALLED_KERNEL}" != "${CURRENTLY_USED_KERNEL}"'
+                      - ' else'
+                      - '   false'
+                      - ' fi'
+                      - '}'
+                      - ''
+                      - 'reboot_if_required () {'
+                      - ' if reboot_required; then'
+                      - '   if [[ ! -f $reboot_flag ]]; then'
+                      - '     touch $reboot_flag'
+                      - '     echo "Reboot will be performed"'
+                      - '     exit 194'
+                      - '   fi'
+                      - ' fi'
+                      - ' if [[ -f $reboot_flag ]]; then'
+                      - '     rm $reboot_flag'
+                      - ' fi'
+                      - '}'
+                      - ''
+                      - 'reboot_flag=/var/tmp/REBOOT_FLAG'
+                      - 'updates_flag=/var/tmp/UPDATES_FLAG'
+                      - 'upgrades_flag=/var/tmp/UPGRADES_FLAG'
+                      - 'perform_system_updates={{installSystemUpdatesOnBoot}}'
+                      - ''
+                      - 'if is_redhat_family; then'
+                      - ' if [[ "$perform_system_updates" == "true" ]]; then'
+                      - '   if [[ ! -f $updates_flag ]]; then'
+                      - '     echo "Installing system updates ..."'
+                      - '     execute_with_retry yum -y update 1>/dev/null'
+                      - '     touch $updates_flag'
+                      - '     echo "System updates are installed"'
+                      - '   else'
+                      - '     rm $updates_flag'
+                      - '   fi'
+                      - ' else'
+                      - '   echo "System updates will not be installed"'
+                      - ' fi'
+                      - 'elif is_debian_family; then'
+                      - ' if [[ ! -f $updates_flag ]]; then'
+                      - '   echo "Download packages information ..."'
+                      - '   execute_with_retry apt-get update 1>/dev/null'
+                      - '   touch $updates_flag'
+                      - '   echo "Packages information is downloaded"'
+                      - ' else'
+                      - '   rm $updates_flag'
+                      - ' fi'
+                      - ' if [[ "$perform_system_updates" == "true" ]]; then'
+                      - '   if [[ ! -f $upgrades_flag ]]; then'
+                      - '     echo "Installing system updates ..."'
+                      - '     execute_with_retry apt-get dist-upgrade -y 1>/dev/null'
+                      - '     touch $upgrades_flag'
+                      - '     echo "System updates are installed"'
+                      - '   else'
+                      - '     rm $upgrades_flag'
+                      - '   fi'
+                      - ' else'
+                      - '   echo "System updates will not be installed"'
+                      - ' fi'
+                      - 'fi'
+                      - 'reboot_if_required'
+            - name: mountEbsVolumesSwitch
+              action: aws:branch
+              inputs:
+                Choices:
+                - NextStep: getvolumeids
+                  Not:
+                    And:
+                    - Variable: "{{deviceNames}}"
+                      StringEquals: ''
+                    - Variable: "{{mountDirectories}}"
+                      StringEquals: ''
+                Default:
+                  applyChefRecipesSwitch
+            - name: getvolumeids
+              action: 'aws:executeScript'
+              inputs:
+                Runtime: python3.6
+                Handler: script_handler
+                InputPayload:
+                  instance_id: '{{instanceId}}'
+                  device_names: '{{deviceNames}}'
+                Script: |+
+                  import json
+                  import boto3
+                  from botocore.exceptions import ClientError
+
+                  def script_handler(event, context):
+                      ec2_client = boto3.client("ec2")
+                      device_names = event["device_names"].split(" ")
+                      instance_id = event["instance_id"]
+                      ebs_volumes = []
+                      kwargs = {
+                          "Filters": [
+                              {
+                                  "Name": "attachment.instance-id",
+                                  "Values": [
+                                      instance_id
+                                  ]
+                              }
+                          ]
+                      }
+                      while True:
+                          try:
+                              response = ec2_client.describe_volumes(**kwargs)
+                              ebs_volumes.extend(response['Volumes'])
+                          except ClientError as e:
+                              raise
+                          try:
+                              kwargs["NextToken"] = response["NextToken"]
+                          except KeyError:
+                              break
+                      device_volume_info = {}
+                      for ebs_volume in ebs_volumes:
+                          ebs_volume_attachments = ebs_volume["Attachments"]
+                          for ebs_volume_attachment in ebs_volume_attachments:
+                              if ebs_volume_attachment['InstanceId'] == instance_id:
+                                  device_name = ebs_volume_attachment["Device"]
+                                  volume_id = ebs_volume_attachment["VolumeId"]
+                                  device_volume_info[device_name] = volume_id
+                      volume_ids = [device_volume_info[device_name] for device_name in device_names]
+                      return (' ').join(volume_ids)
+              outputs:
+                - Selector: $.Payload
+                  Type: String
+                  Name: volumeIDs
+            - name: MountEBSVolumes
+              action: aws:runCommand
+              onFailure: 'step:SendNotificationMountEBSVolumesFailure'
+              inputs:
+                DocumentName: MountEBSVolumes
+                InstanceIds:
+                  - '{{instanceId}}'
+                OutputS3BucketName:
+                  Ref: RunCommandLogsBucket
+                OutputS3KeyPrefix: 
+                  Fn::Sub: ${RunCommandLogsPrefix}/MountEBSVolumes
+                Parameters:
+                  DeviceNames:
+                    - '{{deviceNames}}'
+                  VolumeIds:
+                    - '{{getvolumeids.volumeIDs}}'
+                  MountDirectories:
+                    - '{{mountDirectories}}'
+                  FileSystemTypes:
+                    - Ref: FileSystemTypes
+              outputs:
+                - Name: run_command_id
+                  Selector: $.CommandId
+                  Type: String
+                - Name: run_command_status
+                  Selector: $.Status
+                  Type: String
+            - name: applyChefRecipesSwitch
+              action: aws:branch
+              inputs:
+                Choices:
+                - NextStep: prepareApplyChefRecipesParameters
+                  Not:
+                    Variable: "{{applyChefRecipesPropertiesParameter}}"
+                    StringEquals: ''
+                Default:
+                  CompleteLifecycleAction
+            - name: prepareApplyChefRecipesParameters
+              action: 'aws:executeScript'
+              inputs:
+                Runtime: python3.6
+                Handler: script_handler
+                InputPayload:
+                  parameter_name: '{{ applyChefRecipesPropertiesParameter }}'
+                Script: |-
+                  def script_handler(events, context):
+                      import json
+                      import boto3
+                      from botocore.exceptions import ClientError
+
+                      ssm_client = boto3.client("ssm")
+                      try:
+                          parameter_value = ssm_client.get_parameter(Name=events["parameter_name"])[
+                              "Parameter"
+                          ]["Value"]
+                      except ClientError as e:
+                          raise
+                      process_ssm_end = parameter_value.replace("ssm-secureend", "}}")
+                      processed_params = process_ssm_end.replace("ssm-securestart", "{{ssm-secure")
+                      processed_params = json.loads(processed_params)
+                      if type(processed_params["SourceInfo"]) is dict:
+                        processed_params["SourceInfo"] = json.dumps(processed_params["SourceInfo"])
+                      if type(processed_params["JsonAttributesContent"]) is dict:
+                        processed_params["JsonAttributesContent"] = json.dumps(
+                            processed_params["JsonAttributesContent"]
+                        )
+                      return processed_params
+              outputs:
+                - Name: SourceType
+                  Type: String
+                  Selector: $.Payload.SourceType
+                - Name: SourceInfo
+                  Selector: $.Payload.SourceInfo
+                  Type: String
+                - Name: RunList
+                  Selector: $.Payload.RunList
+                  Type: String
+                - Name: JsonAttributesSources
+                  Selector: $.Payload.JsonAttributesSources
+                  Type: String
+                - Name: JsonAttributesContent
+                  Selector: $.Payload.JsonAttributesContent
+                  Type: String
+                - Name: ChefClientVersion
+                  Selector: $.Payload.ChefClientVersion
+                  Type: String
+                - Name: ChefClientArguments
+                  Selector: $.Payload.ChefClientArguments
+                  Type: String
+                - Name: WhyRun
+                  Selector: $.Payload.WhyRun
+                  Type: String
+                - Name: ComplianceType
+                  Selector: $.Payload.ComplianceType
+                  Type: String
+                - Name: ComplianceSeverity
+                  Selector: $.Payload.ComplianceSeverity
+                  Type: String
+                - Name: ComplianceReportBucket
+                  Selector: $.Payload.ComplianceReportBucket
+                  Type: String
+            - name: ApplyChefRecipes
+              action: 'aws:runCommand'
+              onFailure: 'step:SendNotificationApplyChefRecipesFailure'
+              inputs:
+                DocumentName: AWS-ApplyChefRecipes
+                InstanceIds:
+                  - '{{instanceId}}'
+                OutputS3BucketName:
+                  Ref: RunCommandLogsBucket
+                OutputS3KeyPrefix: 
+                  Fn::Sub: ${RunCommandLogsPrefix}/ApplyChefRecipes
+                Parameters:
+                  SourceType:
+                    - '{{ prepareApplyChefRecipesParameters.SourceType }}'
+                  SourceInfo:
+                    - '{{ prepareApplyChefRecipesParameters.SourceInfo }}'
+                  RunList:
+                    - '{{ prepareApplyChefRecipesParameters.RunList }}'
+                  JsonAttributesSources:
+                    - '{{ prepareApplyChefRecipesParameters.JsonAttributesSources }}'
+                  JsonAttributesContent:
+                    - '{{ prepareApplyChefRecipesParameters.JsonAttributesContent }}'
+                  ChefClientVersion:
+                    - '{{ prepareApplyChefRecipesParameters.ChefClientVersion }}'
+                  ChefClientArguments:
+                    - '{{ prepareApplyChefRecipesParameters.ChefClientArguments }}'
+                  WhyRun:
+                    - '{{ prepareApplyChefRecipesParameters.WhyRun }}'
+                  ComplianceType:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceType }}'
+                  ComplianceSeverity:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceSeverity }}'
+                  ComplianceReportBucket:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceReportBucket }}'
+              outputs:
+                - Name: run_command_id
+                  Selector: $.CommandId
+                  Type: String
+                - Name: run_command_status
+                  Selector: $.Status
+                  Type: String
+            - name: CompleteLifecycleAction
+              action: 'aws:executeAwsApi'
+              inputs:
+                Service: autoscaling
+                Api: CompleteLifecycleAction
+                LifecycleHookName: 
+                  Ref: LaunchLifeCycleHook
+                AutoScalingGroupName: 
+                  Ref: ApplicationAsg
+                InstanceId: '{{instanceId}}'
+                LifecycleActionResult: CONTINUE
+              isEnd: True
+            - name: SendNotificationApplyChefRecipesFailure
+              action: 'aws:executeAwsApi'
+              inputs:
+                Service: sns
+                Api: Publish
+                TopicArn:
+                  Ref: SNSTopic
+                Message: 'Automation Execution ID {{automation:EXECUTION_ID}} has failed has failed with status code {{ApplyChefRecipes.run_command_status}}. Specifically the RunCommand ID {{ApplyChefRecipes.run_command_id}}. You can view Automation Execution error inside AWS Systems Manager. '
+            - name: SendNotificationMountEBSVolumesFailure
+              action: 'aws:executeAwsApi'
+              inputs:
+                Service: sns
+                Api: Publish
+                TopicArn:
+                  Ref: SNSTopic
+                Message: 'Automation Execution ID {{automation:EXECUTION_ID}} has failed has failed with status code {{MountEBSVolumes.run_command_status}}. Specifically the RunCommand ID {{MountEBSVolumes.run_command_id}}. You can view Automation Execution error inside AWS Systems Manager. '
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+    TerminateAutomationCommand:
+      Type: AWS::SSM::Document
+      Condition: TerminateAutomationResources
+      Properties:
+        DocumentFormat: YAML
+        DocumentType: Automation
+        VersionName: 1.0
+        Content:
+          description: Automation document running Chef recipes during instance termination.
+          schemaVersion: '0.3'
+          assumeRole: 
+            Fn::GetAtt: [AutomationAssumeRole, Arn]
+          parameters:
+            instanceId:
+              type: String
+            applyChefRecipesPropertiesParameter:
+              type: String
+              default: 
+                Fn::Sub:  /ApplyChefRecipes-Preset/${AWS::StackName}/Terminate
+          mainSteps:
+            - name: prepareApplyChefRecipesParameters
+              action: 'aws:executeScript'
+              inputs:
+                Runtime: python3.6
+                Handler: script_handler
+                InputPayload:
+                  parameter_name: '{{ applyChefRecipesPropertiesParameter }}'
+                Script: |-
+                  def script_handler(events, context):
+                      import json
+                      import boto3
+                      from botocore.exceptions import ClientError
+
+                      ssm_client = boto3.client("ssm")
+                      try:
+                          parameter_value = ssm_client.get_parameter(Name=events["parameter_name"])[
+                              "Parameter"
+                          ]["Value"]
+                      except ClientError as e:
+                          raise
+                      process_ssm_end = parameter_value.replace("ssm-secureend", "}}")
+                      processed_params = process_ssm_end.replace("ssm-securestart", "{{ssm-secure")
+                      processed_params = json.loads(processed_params)
+                      if type(processed_params["SourceInfo"]) is dict:
+                        processed_params["SourceInfo"] = json.dumps(processed_params["SourceInfo"])
+                      if type(processed_params["JsonAttributesContent"]) is dict:
+                        processed_params["JsonAttributesContent"] = json.dumps(
+                            processed_params["JsonAttributesContent"]
+                        )
+                      return processed_params
+              outputs:
+                - Name: SourceType
+                  Type: String
+                  Selector: $.Payload.SourceType
+                - Name: SourceInfo
+                  Selector: $.Payload.SourceInfo
+                  Type: String
+                - Name: RunList
+                  Selector: $.Payload.RunList
+                  Type: String
+                - Name: JsonAttributesSources
+                  Selector: $.Payload.JsonAttributesSources
+                  Type: String
+                - Name: JsonAttributesContent
+                  Selector: $.Payload.JsonAttributesContent
+                  Type: String
+                - Name: ChefClientVersion
+                  Selector: $.Payload.ChefClientVersion
+                  Type: String
+                - Name: ChefClientArguments
+                  Selector: $.Payload.ChefClientArguments
+                  Type: String
+                - Name: WhyRun
+                  Selector: $.Payload.WhyRun
+                  Type: String
+                - Name: ComplianceType
+                  Selector: $.Payload.ComplianceType
+                  Type: String
+                - Name: ComplianceSeverity
+                  Selector: $.Payload.ComplianceSeverity
+                  Type: String
+                - Name: ComplianceReportBucket
+                  Selector: $.Payload.ComplianceReportBucket
+                  Type: String
+            - name: ApplyChefRecipes
+              action: 'aws:runCommand'
+              onFailure: 'step:SendNotification'
+              inputs:
+                DocumentName: AWS-ApplyChefRecipes
+                InstanceIds:
+                  - '{{instanceId}}'
+                OutputS3BucketName:
+                  Ref: RunCommandLogsBucket
+                OutputS3KeyPrefix: 
+                  Fn::Sub: ${RunCommandLogsPrefix}/ApplyChefRecipes
+                Parameters:
+                  SourceType:
+                    - '{{ prepareApplyChefRecipesParameters.SourceType }}'
+                  SourceInfo:
+                    - '{{ prepareApplyChefRecipesParameters.SourceInfo }}'
+                  RunList:
+                    - '{{ prepareApplyChefRecipesParameters.RunList }}'
+                  JsonAttributesSources:
+                    - '{{ prepareApplyChefRecipesParameters.JsonAttributesSources }}'
+                  JsonAttributesContent:
+                    - '{{ prepareApplyChefRecipesParameters.JsonAttributesContent }}'
+                  ChefClientVersion:
+                    - '{{ prepareApplyChefRecipesParameters.ChefClientVersion }}'
+                  ChefClientArguments:
+                    - '{{ prepareApplyChefRecipesParameters.ChefClientArguments }}'
+                  WhyRun:
+                    - '{{ prepareApplyChefRecipesParameters.WhyRun }}'
+                  ComplianceType:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceType }}'
+                  ComplianceSeverity:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceSeverity }}'
+                  ComplianceReportBucket:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceReportBucket }}'
+              outputs:
+                - Name: run_command_id
+                  Selector: $.CommandId
+                  Type: String
+                - Name: run_command_status
+                  Selector: $.Status
+                  Type: String
+            - name: CompleteLifecycleAction
+              action: 'aws:executeAwsApi'
+              inputs:
+                Service: autoscaling
+                Api: CompleteLifecycleAction
+                LifecycleHookName: 
+                  Ref: TerminateLifeCycleHook
+                AutoScalingGroupName: 
+                  Ref: ApplicationAsg
+                InstanceId: '{{instanceId}}'
+                LifecycleActionResult: CONTINUE
+              isEnd: True
+            - name: SendNotification
+              action: 'aws:executeAwsApi'
+              inputs:
+                Service: sns
+                Api: Publish
+                TopicArn:
+                  Ref: SNSTopic
+                Message: 'Automation Execution ID {{automation:EXECUTION_ID}} has failed has failed with status code {{ApplyChefRecipes.run_command_status}}. Specifically the RunCommand ID {{ApplyChefRecipes.run_command_id}}. You can view Automation Execution error inside AWS Systems Manager. '
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+    ConfigureAutomationCommand:
+      Type: AWS::SSM::Document
+      Condition: ConfigureAutomationResources
+      Properties:
+        DocumentFormat: YAML
+        DocumentType: Automation
+        VersionName: 1.0
+        Content:
+          description: Automation document running Chef recipes during the deployment phase.
+          schemaVersion: '0.3'
+          assumeRole: 
+            Fn::GetAtt: [AutomationAssumeRole, Arn]
+          parameters:
+            instanceIds:
+              type: StringList
+            applyChefRecipesPropertiesParameter:
+              type: String
+              default: 
+                Fn::Sub:  /ApplyChefRecipes-Preset/${AWS::StackName}/Configure
+          mainSteps:
+            - name: prepareApplyChefRecipesParameters
+              action: 'aws:executeScript'
+              inputs:
+                Runtime: python3.6
+                Handler: script_handler
+                InputPayload:
+                  parameter_name: '{{ applyChefRecipesPropertiesParameter }}'
+                Script: |-
+                  def script_handler(events, context):
+                      import json
+                      import boto3
+                      from botocore.exceptions import ClientError
+
+                      ssm_client = boto3.client("ssm")
+                      try:
+                          parameter_value = ssm_client.get_parameter(Name=events["parameter_name"])[
+                              "Parameter"
+                          ]["Value"]
+                      except ClientError as e:
+                          raise
+                      process_ssm_end = parameter_value.replace("ssm-secureend", "}}")
+                      processed_params = process_ssm_end.replace("ssm-securestart", "{{ssm-secure")
+                      processed_params = json.loads(processed_params)
+                      if type(processed_params["SourceInfo"]) is dict:
+                        processed_params["SourceInfo"] = json.dumps(processed_params["SourceInfo"])
+                      if type(processed_params["JsonAttributesContent"]) is dict:
+                        processed_params["JsonAttributesContent"] = json.dumps(
+                            processed_params["JsonAttributesContent"]
+                        )
+                      return processed_params
+              outputs:
+                - Name: SourceType
+                  Type: String
+                  Selector: $.Payload.SourceType
+                - Name: SourceInfo
+                  Selector: $.Payload.SourceInfo
+                  Type: String
+                - Name: RunList
+                  Selector: $.Payload.RunList
+                  Type: String
+                - Name: JsonAttributesSources
+                  Selector: $.Payload.JsonAttributesSources
+                  Type: String
+                - Name: JsonAttributesContent
+                  Selector: $.Payload.JsonAttributesContent
+                  Type: String
+                - Name: ChefClientVersion
+                  Selector: $.Payload.ChefClientVersion
+                  Type: String
+                - Name: ChefClientArguments
+                  Selector: $.Payload.ChefClientArguments
+                  Type: String
+                - Name: WhyRun
+                  Selector: $.Payload.WhyRun
+                  Type: String
+                - Name: ComplianceType
+                  Selector: $.Payload.ComplianceType
+                  Type: String
+                - Name: ComplianceSeverity
+                  Selector: $.Payload.ComplianceSeverity
+                  Type: String
+                - Name: ComplianceReportBucket
+                  Selector: $.Payload.ComplianceReportBucket
+                  Type: String
+            - name: ApplyChefRecipes
+              action: 'aws:runCommand'
+              inputs:
+                DocumentName: AWS-ApplyChefRecipes
+                InstanceIds: '{{instanceIds}}'
+                OutputS3BucketName:
+                  Ref: RunCommandLogsBucket
+                OutputS3KeyPrefix: 
+                  Fn::Sub: ${RunCommandLogsPrefix}/ApplyChefRecipes
+                Parameters:
+                  SourceType:
+                    - '{{ prepareApplyChefRecipesParameters.SourceType }}'
+                  SourceInfo:
+                    - '{{ prepareApplyChefRecipesParameters.SourceInfo }}'
+                  RunList:
+                    - '{{ prepareApplyChefRecipesParameters.RunList }}'
+                  JsonAttributesSources:
+                    - '{{ prepareApplyChefRecipesParameters.JsonAttributesSources }}'
+                  JsonAttributesContent:
+                    - '{{ prepareApplyChefRecipesParameters.JsonAttributesContent }}'
+                  ChefClientVersion:
+                    - '{{ prepareApplyChefRecipesParameters.ChefClientVersion }}'
+                  ChefClientArguments:
+                    - '{{ prepareApplyChefRecipesParameters.ChefClientArguments }}'
+                  WhyRun:
+                    - '{{ prepareApplyChefRecipesParameters.WhyRun }}'
+                  ComplianceType:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceType }}'
+                  ComplianceSeverity:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceSeverity }}'
+                  ComplianceReportBucket:
+                    - '{{ prepareApplyChefRecipesParameters.ComplianceReportBucket }}'
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+
+    CustomTerminationLambda: 
+      Type: AWS::Lambda::Function
+      Properties: 
+        Code: 
+          ZipFile: 
+            Fn::Sub: |
+              import boto3
+              import random
+              from botocore.exceptions import ClientError
+
+              def lambda_handler(event,context):
+                  instance_ids_to_terminate = [x['InstanceId'] for x in event['Instances']]
+                  ec2_client = boto3.client('ec2')
+                  instances_to_not_terminate = []
+                  default_sample_size = 15
+                  sample_size = default_sample_size if len(instance_ids_to_terminate) > default_sample_size else len(instance_ids_to_terminate) 
+                  instance_ids_to_terminate = random.sample(instance_ids_to_terminate,sample_size)
+                  kwargs = {
+                      "Filters": [
+                      {
+                           'Name':'tag-key',
+                           'Values': ['protected_instance']
+                      }],
+                      "InstanceIds": instance_ids_to_terminate
+                  }
+                  try:
+                      response = ec2_client.describe_instances(
+                          **kwargs
+                      )['Reservations']            
+                  except ClientError as e:
+                      raise
+
+                  [instance_ids_to_terminate.remove(i['InstanceId']) for e in response for i in e.get("Instances","")]
+
+                  return {
+                      "InstanceIDs": instance_ids_to_terminate
+                  }
+
+        Description:
+          Fn::Sub:  Custom termination policy as part of ${AWS::StackName} CloudFormation stack. EC2 instances which are deemed for a scale in event will not be terminated if they contain a specific tag. 
+        Handler: index.lambda_handler
+        Role: 
+          Fn::GetAtt: [LambdaFunctionRole, Arn]
+        Runtime: python3.9
+        Timeout: 120
+        MemorySize: 128
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+    CustomTerminationLambdaPermission:
+      Type: AWS::Lambda::Permission
+      Properties: 
+        Action: lambda:InvokeFunction
+        FunctionName:
+          Ref: CustomTerminationLambda
+        Principal: 
+          Fn::Sub: 
+            arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/autoscaling.amazonaws.com/${ASGServiceLinkedRole}
+      DependsOn: ASGServiceLinkedRole
+    ASGServiceLinkedRole:
+      Type: AWS::IAM::ServiceLinkedRole
+      Properties: 
+        AWSServiceName: autoscaling.amazonaws.com
+        Description: 
+          Fn::Sub: Service-Linked Role for custom termination policy. Part of CloudFormation stack ${AWS::StackName}
+        CustomSuffix:
+          Fn::Join:
+            - "-"
+            - - Ref: AWS::Region
+              - Fn::Select:
+                - 4 
+                - Fn::Split:
+                  - "-"
+                  - Fn::Select:
+                    - 2 
+                    - Fn::Split:
+                      - "/"
+                      - Ref: AWS::StackId
+    LambdaFunctionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action:
+                - sts:AssumeRole
+        Policies:
+          - PolicyDocument:
+              Version: '2012-10-17'
+              Statement:                 
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                  Resource:
+                    - Fn::Sub:
+                        arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:*
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - Fn::Sub:
+                        arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+                - Effect: Allow
+                  Action:
+                    - ec2:DescribeInstances
+                    - ec2:DescribeTags
+                  Resource: '*'
+            PolicyName: lambdafunctionexecutionrole
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName
+
+    ResourceGroup:
+      Type: AWS::ResourceGroups::Group
+      Properties:
+        Description: Resource group for all resources deployed by CFN stack.
+        Name:
+          Ref: AWS::StackName
+        ResourceQuery:
+          Query:
+            TagFilters:
+              - Key: ComponentName
+                Values:
+                  - Ref: AWS::StackName
+          Type: TAG_FILTERS_1_0
+        Tags:
+          - 'Fn::If':
+              - IsApplicationNameProvided
+              - Key: ApplicationName
+                Value:
+                  Ref: ApplicationName
+              - Ref: AWS::NoValue

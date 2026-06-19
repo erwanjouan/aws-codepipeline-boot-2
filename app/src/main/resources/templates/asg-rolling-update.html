@@ -1,0 +1,73 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
+<head>
+    <meta http-equiv="refresh" content="3">
+
+    <title>Blue Green App</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+
+    <!-- bootstrap -->
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}"/>
+    <script th:src="@{/webjars/bootstrap/5.3.0/js/bootstrap.min.js}"></script>
+
+    <!-- jquery -->
+    <script th:src="@{/webjars/jquery/3.4.1/jquery.min.js}"></script>
+
+    <!-- jquery datatable-->
+    <link rel="stylesheet" th:href="@{/webjars/datatables/1.10.19/css/jquery.dataTables.min.css}"/>
+    <script th:src="@{/webjars/datatables/1.10.19/js/jquery.dataTables.min.js}"></script>
+
+</head>
+
+<body>
+
+<div class="container-fluid p-5 text-center">
+    <h4>ASG of EC2s behind ALB</h4>
+    <h6>UpdatePolicy: Rolling Update</h6>
+</div>
+
+<div class="container ml-1">
+    <!-- From instance-->
+    <div class="mt-2">
+        <h5>From Instance</h5>
+        <span>
+            <b>InstanceId=</b>
+            [[${ec2ControlDto.instanceInfo.getInstanceId}]]
+            ([[${ec2ControlDto.instanceInfo.getAvailabilityZone}]])
+        </span>
+    </div>
+
+    <!-- Deployed instance-->
+    <div class="mt-5">
+        <h5>Instances</h5>
+        <table id="sample" class="table table-bordered table-hover table-striped">
+            <thead>
+            <tr class="headings">
+                <th th:each="header: ${ec2ControlDto.controlTable.headers}" class="column-title"
+                    th:text="${header}" th:style="|background: ${color}|"/>
+            </tr>
+            </thead>
+            <tbody>
+            <tr class="even pointer" th:each="row: ${ec2ControlDto.controlTable.rows}" id="tablerow">
+                <td th:each="header: ${ec2ControlDto.controlTable.headers}" th:text="${row.get(header)}"/>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Deployment info-->
+    <div class="mt-4">
+        <h5>UpdatePolicy section</h5>
+        <span>
+            <b>AutoScalingReplacingUpdate(WillReplace</b> = false),
+            <b>AutoScalingRollingUpdate(MaxBatchSize</b> = 2,
+            <b>MinInstancesInService</b> = 2,
+            <b>WaitOnResourceSignals</b> = true)
+        </span>
+        <a href="https://docs.aws.amazon.com/fr_fr/AWSCloudFormation/latest/UserGuide/aws-attribute-updatepolicy.html">
+            Documentation
+        </a>
+    </div>
+</div>
+</body>
+</html>

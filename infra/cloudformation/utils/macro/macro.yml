@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Macro to add tags (AWS Skill Builder example)
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+
+Resources:
+
+  ##########
+  # Macros
+  ##########
+
+  MacroExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  MacroLambdaFunction:
+    Properties:
+      Handler: index.handler
+      Timeout: 60
+      Role: !GetAtt 'MacroExecutionRole.Arn'
+      FunctionName: !Sub '${ProjectDeploymentName}'
+      Runtime: python3.9
+      Code:
+        # An AWS Lambda function always takes two parameters: the event and the context.
+        # The event is a dictionary containing all the input data.
+        # The context is an object allowing for some access to the lambda environment, with data such as how much time it has left.
+        # We will not use the context parameter, but still need to define it.
+        ZipFile: |
+          def add_tags_to_resource(resource, tags):
+            if(resource['Type'] == 'AWS::Events::Rule'): # does not support tags
+              return resource
+            if('Properties' not in resource):
+              resource['Properties']={}
+            if('Tags' not in resource['Properties']):
+                  resource['Properties']['Tags']=[]
+            resource['Properties']['Tags'].extend( tags )
+            return resource
+
+          def transform_fragment(event):
+            tag_list=event['params']['Tags']
+            tag_tuples=map( lambda kv: kv.split("="), tag_list)
+            tags=map( lambda t: {'Key':t[0],'Value':t[1]}, tag_tuples)
+            new_fragment={k: add_tags_to_resource(v,tags) for k, v in event['fragment'].items()}
+            return {
+              "requestId": event['requestId'],
+              "status": "success",
+              "fragment": new_fragment
+            }
+
+          def handler(event, context):
+            try:
+              print("event", event)
+              return transform_fragment(event)
+            except BaseException as ex:
+              print("Error - "+str(ex))
+              return {
+                "requestId": event['requestId'],
+                "status": "ERROR - "+str(ex),
+                "fragment": {}
+              }
+    Type: AWS::Lambda::Function
+
+  Macro:
+    Properties:
+      Name: AddTags
+      Description: Returns the another fragment
+      FunctionName: !Ref MacroLambdaFunction
+    Type: AWS::CloudFormation::Macro

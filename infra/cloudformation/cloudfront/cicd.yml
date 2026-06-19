@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CICD For a Java SpringBoot application deployed with CFN Creation Policy on EC2 behind Cloudfront
+Parameters:
+  ProjectName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  CrossAccountRoleArn:
+    Type: String
+    Description: ARN of the IAM role that can be assumed by CodePipeline in target account
+  CloudFormationRoleArn:
+    Type: String
+    Description: ARN of IAM role that can be assumed by CloudFormation in target account
+  WorkloadAccountId:
+    Type: String
+
+Resources:
+  Instance:
+    Properties:
+      ProjectName: !Ref ProjectName
+      DeploymentName: !Ref DeploymentName
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      BranchName: main
+      ArtifactDomainName: !Ref ProjectName
+      RepositoryName: !Ref DeploymentName
+      MavenBuildProfile: default
+      WorkloadAccountId: !Ref WorkloadAccountId
+      CrossAccountRoleArn: !Ref CrossAccountRoleArn
+      CloudFormationRoleArn: !Ref CloudFormationRoleArn
+      Architecture: x86
+    Type: Atomicity::CiCd::Instance::MODULE

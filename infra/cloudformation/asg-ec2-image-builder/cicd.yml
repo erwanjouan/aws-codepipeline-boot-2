@@ -1,0 +1,311 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CICD For a Java SpringBoot application deployed with Ec2ImageBuilder on EC2 behind ALB
+Parameters:
+  ProjectName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  BranchName:
+    Type: String
+    Default: main
+  ArtifactName:
+    Type: String
+    Default: app.jar
+
+Resources:
+
+  ####################
+  # S3 Artifact bucket
+  ####################
+
+  ArtifactOutputBucket:
+    Type: AWS::S3::Bucket
+
+  ############
+  # CodeBuild
+  ############
+
+  CodeBuildServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: allow-to-push-to-S3
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:List*
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactOutputBucket}"
+                  - !Sub "arn:aws:s3:::${ArtifactOutputBucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:PutLogEvents
+                  - logs:PutRetentionPolicy
+                Resource: "arn:aws:logs:*"
+              - Effect: Allow
+                Action: codecommit:GitPull
+                Resource: '*'
+              - Effect: Allow
+                Action: cloudformation:CreateStack
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  CodeBuildJavaProject:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      ServiceRole: !Ref CodeBuildServiceRole
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub '${DeploymentName}/buildspec.yml'
+      SourceVersion: main
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:6.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Type: PLAINTEXT
+            Value: !Ref AWS::Region
+          - Name: PROJECT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: PROJECT_DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectDeploymentName
+          - Name: DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref DeploymentName
+          - Name: ARTIFACT_BUCKET
+            Type: PLAINTEXT
+            Value: !Ref ArtifactOutputBucket
+          - Name: ARTIFACT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ArtifactName
+      Cache:
+        Location: !Sub '${ArtifactOutputBucket}/cache'
+        Type: S3
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub /aws/codebuild/${ProjectDeploymentName}
+    DependsOn: CodeBuildLogGroup
+    Type: AWS::CodeBuild::Project
+
+  CodeBuildLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/codebuild/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  ###############
+  # CodePipeline
+  ###############
+
+  CodePipelineRole:
+    # Role for CodePipeline
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSCodePipeline_FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:CreateDeploymentGroup
+                  - codedeploy:GetApplication
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codecommit:*
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:UpdateStack
+                Resource: '*'
+      RoleName: !Sub 'code-pipeline-role-${ProjectDeploymentName}'
+    Type: AWS::IAM::Role
+
+  BuildProjectPipeline:
+    # Creating a build pipeline for your project in AWS CodePipeline
+    Properties:
+      Name: !Sub ${ProjectDeploymentName}
+      RoleArn: !GetAtt 'CodePipelineRole.Arn'
+      RestartExecutionOnUpdate: False
+      ArtifactStore:
+        Location: !Ref ArtifactOutputBucket
+        Type: S3
+      Stages:
+        - Name: SourceStage
+          Actions:
+            - Name: CodeCommit
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              OutputArtifacts:
+                - Name: source
+              Configuration:
+                BranchName: !Ref BranchName
+                RepositoryName: !Ref ProjectName
+                PollForSourceChanges: false
+                OutputArtifactFormat: CODEBUILD_CLONE_REF
+              Namespace: GitVariables
+        - Name: BuildStage
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildJavaProject
+              InputArtifacts:
+                - Name: source
+              OutputArtifacts:
+                - Name: infra
+              RunOrder: 1
+            - Name: Ec2ImageBuilder
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub '${ProjectDeploymentName}-ami'
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/CloudformationRole"
+                TemplatePath: "infra::build_ami.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "ProjectDeploymentName": "${ProjectDeploymentName}",
+                    "ArtifactOutputBucket": "${ArtifactOutputBucket}",
+                    "GitCommitId": "#{GitVariables.CommitId}"
+                  }
+              Namespace: Ec2ImageBuilder
+              RunOrder: 2
+        - Name: DeployStage
+          Actions:
+            - Name: Cloudformation
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub '${ProjectDeploymentName}-deploy'
+                Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
+                RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/CloudformationRole"
+                TemplatePath: "infra::infra.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "ProjectDeploymentName": "${ProjectDeploymentName}",
+                    "DeploymentName": "${DeploymentName}",
+                    "ArtifactName": "${ArtifactName}",
+                    "LatestAmi2Id": "#{Ec2ImageBuilder.AmiId}",
+                    "ProjectVersion": "#{GitVariables.CommitId}"
+                  }
+            - Name: DeleteEc2ImageBuilder
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: DELETE_ONLY
+                StackName: !Sub '${ProjectDeploymentName}-ami'
+                Capabilities: CAPABILITY_IAM
+                RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/CloudformationRole"
+                TemplatePath: "infra::build_ami.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "ProjectDeploymentName": "${ProjectDeploymentName}",
+                    "GitCommitId": "#{GitVariables.CommitId}"
+                  }
+    Type: AWS::CodePipeline::Pipeline
+
+
+  #####################################
+  # Starts the pipeline at each commit
+  # Pull request validation
+  #####################################
+
+  CiCdUtils:
+    Properties:
+      ProjectName: !Ref ProjectName
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      DeploymentName: !Ref DeploymentName
+      CodeBuildServiceRole: !Ref CodeBuildServiceRole
+      ArtifactOutputBucket: !Ref ArtifactOutputBucket
+      BranchName: !Ref BranchName
+      ProjectPipeline: !Ref BuildProjectPipeline
+    Type: Atomicity::CiCd::Utils::MODULE
+
+  ##########
+  # Cleanup
+  ##########
+
+  Cleanup:
+    Properties:
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      ContainerImageRegistries: ''
+      BucketNames: !Ref ArtifactOutputBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE
+
+Outputs:
+  ArtifactOutputBucket:
+    Value: !GetAtt ArtifactOutputBucket.RegionalDomainName

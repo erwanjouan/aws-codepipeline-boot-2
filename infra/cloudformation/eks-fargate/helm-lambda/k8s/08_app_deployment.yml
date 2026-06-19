@@ -1,0 +1,65 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-${PROJECT_DEPLOYMENT_NAME}
+  namespace: ${K8S_NAMESPACE}
+spec:
+  replicas: ${NUMBER_OF_REPLICAS}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: app-${PROJECT_DEPLOYMENT_NAME}
+  template:
+    metadata:
+      creationTimestamp:
+      labels:
+        app.kubernetes.io/name: app-${PROJECT_DEPLOYMENT_NAME}
+    spec:
+      containers:
+        - name: app-${PROJECT_DEPLOYMENT_NAME}
+          image: 467420073914.dkr.ecr.eu-west-1.amazonaws.com/${PROJECT_DEPLOYMENT_NAME}:${IMAGE_TAG}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: ${DEPLOYMENT_NAME}
+            - name: PROJECT_DEPLOYMENT_NAME
+              value: ${PROJECT_DEPLOYMENT_NAME}
+          resources:
+            limits:
+              cpu: 500m
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: "/actuator/health"
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 40
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /${DEPLOYMENT_NAME}
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 40
+            timeoutSeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          imagePullPolicy: Always
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      serviceAccountName: aws-load-balancer-controller
+      serviceAccount: aws-load-balancer-controller
+      securityContext: { }
+      schedulerName: default-scheduler
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%

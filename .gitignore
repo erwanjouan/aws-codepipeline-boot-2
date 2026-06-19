@@ -1,0 +1,13 @@
+.idea
+*.iml
+**/target
+**/venv
+**/.DS_Store
+**/.ipynb_checkpoints
+**/*.png
+**/current/*.yml
+**/package
+**/.deployment.yml
+**/rpdk.log
+**/.k8s_ingress_service.yml
+**/node_modules

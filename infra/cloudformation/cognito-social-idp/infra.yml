@@ -1,0 +1,365 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed on ECS Fargate behind an ALB
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  ApplicationPort:
+    Type: String
+    Default: 8080
+  DesiredCount:
+    Type: String
+    Default: 1
+  AlbHttpsPort:
+    Type: String
+    Default: 443
+  HostedZoneId:
+    Type: String
+    Default: Z1V5NVBGOC3M9Z
+  CertificateId:
+    Type: String
+    Default: bad3b04f-a0d3-4e46-a911-a19091f4dada
+  DnsAlias:
+    Type: String
+    Default: bluegreen.theatomicity.com
+  DeploymentName:
+    Type: String
+  ContainerImageRepositoryUrl:
+    Type: String
+
+Resources:
+
+  Network:
+    Type: Atomicity::Vpc::Internet::MODULE
+
+  ##########################
+  # ALB
+  ##########################
+
+  Alb:
+    Properties:
+      ApplicationPort: !Ref ApplicationPort
+      AlbPort: !Ref AlbHttpsPort
+      # noinspection YamlUnresolvedReferences
+      VPC: !Ref NetworkVPC
+      # noinspection YamlUnresolvedReferences
+      PublicSubnet1: !Ref NetworkPublicSubnet1
+      # noinspection YamlUnresolvedReferences
+      PublicSubnet2: !Ref NetworkPublicSubnet2
+      HealthCheckPath: /actuator/health
+      TargetType: ip
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      EnableSecondaryTargetGroup: true
+      CertificateId: !Ref CertificateId
+    # noinspection YamlUnresolvedReferences
+    DependsOn: NetworkGatewayToInternet
+    Type: Atomicity::Alb::Resources::MODULE
+
+  ##########################
+  # Route 53
+  ##########################
+
+  AlbDNSRecord:
+    Properties:
+      AliasTarget:
+        # noinspection YamlUnresolvedReferences
+        DNSName: !GetAtt AlbInstance.DNSName
+        # noinspection YamlUnresolvedReferences
+        HostedZoneId: !GetAtt AlbInstance.CanonicalHostedZoneID
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DnsAlias
+      Type: A
+    Type: AWS::Route53::RecordSet
+
+  ##########################
+  # ECS
+  ##########################
+
+  ECSTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+    Type: AWS::IAM::Role
+
+  EcsFargateSecurityGroup:
+    Properties:
+      GroupDescription: allow access to ECS from ALB
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ApplicationPort
+          ToPort: !Ref ApplicationPort
+          # noinspection YamlUnresolvedReferences
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+
+  EcsFargateLogGroup:
+    Properties:
+      LogGroupName: !Sub /ecs/fargate/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  EcsFargateTaskDefinition:
+    # ECS Task Definition
+    Properties:
+      NetworkMode: awsvpc
+      Family: !Ref ProjectDeploymentName
+      Cpu: 512
+      Memory: 1024
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn # Fargate requires task definition to have execution role ARN to support ECR images
+      TaskRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: !Ref ProjectDeploymentName
+          Image: !Sub ${ContainerImageRepositoryUrl}:${ProjectVersion}
+          Environment:
+            - Name: SERVER_PORT
+              Value: !Ref ApplicationPort
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolAppClient
+            - Name: COGNITO_CLIENT_SECRET
+              Value: !GetAtt CognitoAppClient.ClientSecret
+            - Name: REDIRECT_URI
+              Value: !Sub "https://${DnsAlias}"
+            - Name: USER_POOL_CLIENT_NAME
+              Value: !Ref ProjectDeploymentName
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: SPRING_PROFILES_ACTIVE
+              Value: !Ref DeploymentName
+            - Name: REGION
+              Value: !Ref AWS::Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref EcsFargateLogGroup
+              awslogs-stream-prefix: oam-ecs
+          PortMappings:
+            - ContainerPort: !Ref ApplicationPort
+    Type: AWS::ECS::TaskDefinition
+
+  EcsFargateCluster:
+    # ECS Cluster
+    Properties:
+      ClusterName: !Ref ProjectDeploymentName
+    Type: AWS::ECS::Cluster
+
+  EcsFargateService:
+    # ECS Service
+    Properties:
+      ServiceName: !Ref ProjectDeploymentName
+      Cluster: !Ref EcsFargateCluster
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      LoadBalancers:
+        - # noinspection YamlUnresolvedReferences
+          TargetGroupArn: !Ref AlbTargetGroup # loadBalancerName and targetGroupArn cannot both be specified. You must specify either a loadBalancerName or a targetGroupArn.
+          ContainerPort: !Ref ApplicationPort
+          ContainerName: !Ref ProjectDeploymentName
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          #AssignPublicIp: ENABLED # unless a NAT / Route needs to be opened to ECR
+          SecurityGroups:
+            - !Ref 'EcsFargateSecurityGroup'
+          # noinspection YamlUnresolvedReferences
+          Subnets: [ !Ref NetworkPrivateSubnet1, !Ref NetworkPrivateSubnet2 ]
+      TaskDefinition: !Ref 'EcsFargateTaskDefinition'
+    # noinspection YamlUnresolvedReferences
+    DependsOn:
+      - AlbListener # unless "The target group does not have an associated load balancer"
+      - EcsFargateLogGroup
+    Type: AWS::ECS::Service
+
+
+  ###############
+  # Cognito IDP
+  ###############
+
+  CognitoUserPool:
+    Properties:
+      AliasAttributes:
+        - phone_number
+        - email
+        - preferred_username
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+    Type: AWS::Cognito::UserPool
+
+  CognitoUserPoolIdentityProvider:
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ProviderName: Google
+      AttributeMapping:
+        email: email
+      ProviderDetails:
+        client_id: 70957737117-ialsbh05oq0u1abo0oemb064qsqibpmp.apps.googleusercontent.com
+        client_secret: ...
+        authorize_scopes: email openid
+      ProviderType: Google
+    Type: AWS::Cognito::UserPoolIdentityProvider
+
+  CognitoUserPoolAppClient:
+    Properties:
+      ClientName: !Ref ProjectDeploymentName
+      UserPoolId: !Ref CognitoUserPool
+      AllowedOAuthFlowsUserPoolClient: true
+      GenerateSecret: true
+      CallbackURLs:
+        - http://localhost:8080/login/oauth2/code/cognito
+        - !Sub "https://${DnsAlias}/login/oauth2/code/cognito"
+      LogoutURLs:
+        - https://localhost:8080/logout
+        - !Sub "https://${DnsAlias}/logout"
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+    DependsOn:
+      - CognitoUserPoolIdentityProvider # unless creation fails
+    Type: AWS::Cognito::UserPoolClient
+
+  CognitoUserPoolDomain:
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Domain: the-atomicity
+    Type: AWS::Cognito::UserPoolDomain
+
+  ##########################
+  # Custom resource
+  ##########################
+
+  CognitoAppClient:
+    Properties:
+      ServiceToken: !GetAtt ClientSecretRetriever.Arn
+    DependsOn: CognitoUserPoolAppClient
+    Type: Custom::ClientSecretRetriever
+
+  ClientSecretRetriever:
+    Properties:
+      Handler: index.lambda_handler
+      Timeout: 60
+      Role: !GetAtt 'LambdaBasicExecutionRole.Arn'
+      Runtime: python3.9
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref CognitoUserPool
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolAppClient
+      Code:
+        ZipFile: |
+          import logging
+          import string
+          import boto3
+          import cfnresponse
+          import traceback
+          import os
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          client = boto3.client('cognito-idp')
+
+          def get_user_pool_client_secret():
+            user_pool_client_response = client.describe_user_pool_client(
+                          UserPoolId=os.getenv('USER_POOL_ID'),
+                          ClientId=os.getenv('COGNITO_CLIENT_ID')
+                      )
+            return user_pool_client_response['UserPoolClient']['ClientSecret']
+
+          def lambda_handler(event, context):
+            try:
+              logger.info('got event {}'.format(event))
+              responseData = {}
+              if event['RequestType'] in ['Create', 'Update']:
+                client_secret = get_user_pool_client_secret()
+                responseData['ClientSecret'] = client_secret
+              logger.info('responseData {}'.format(responseData))
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, 'CustomResourcePhysicalID')
+            except Exception:
+              # Sending FAILED signal to CloudFormation
+              logger.info('Exception {}'.format(traceback.format_exc()))
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, 'CustomResourcePhysicalID')
+    Type: AWS::Lambda::Function
+
+  LambdaBasicExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: lambda-get-cognito-client-secret
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: cognito-idp:*
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  ###############
+  # VPC Endpoints
+  ###############
+
+  VpcEndPoints:
+    Properties:
+      # noinspection YamlUnresolvedReferences
+      VPC: !Ref NetworkVPC
+      # noinspection YamlUnresolvedReferences
+      PrivateSubnet1: !Ref NetworkPrivateSubnet1
+      # noinspection YamlUnresolvedReferences
+      PrivateSubnet2: !Ref NetworkPrivateSubnet2
+    Type: Atomicity::Vpc::Endpoints::MODULE
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${DnsAlias}/api"
+  LoadBalancerName:
+    # noinspection YamlUnresolvedReferences
+    Value: !GetAtt AlbInstance.LoadBalancerName
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalancerName"
+  LoadBalanderDNSName:
+    Value: !Sub
+      - "https://${LbDNSName}/api"
+      - # noinspection YamlUnresolvedReferences
+        LbDNSName: !GetAtt AlbInstance.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalanderDNSName"
+  TargetGroupName:
+    # noinspection YamlUnresolvedReferences
+    Value: !GetAtt AlbTargetGroup.TargetGroupName
+    Export:
+      Name: !Sub "${AWS::StackName}-TargetGroupName"
+  EcsFargateService:
+    Value: !GetAtt 'EcsFargateService.Name'
+    Export:
+      Name: !Sub "${AWS::StackName}-EcsFargateService"
+  EcsFargateCluster:
+    Value: !Ref EcsFargateCluster
+    Export:
+      Name: !Sub "${AWS::StackName}-EcsFargateCluster"
+  WatchServiceEndpoint:
+    Value: !Sub "https://${DnsAlias}/${DeploymentName}"

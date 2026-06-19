@@ -1,0 +1,61 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Route53 Record Sets for Active Active Failover
+
+Parameters:
+  DnsAlias:
+    Type: String
+    Default: sandbox.theatomicity.com
+  HostedZoneId:
+    Type: String
+    Default: Z1V5NVBGOC3M9Z
+  PrimaryAlbDNSName:
+    Type: String
+  PrimaryAlbCanonicalHostedZoneID:
+    Type: String
+  SecondaryAlbDNSName:
+    Type: String
+  SecondaryAlbCanonicalHostedZoneID:
+    Type: String
+
+Resources:
+
+  ##########################
+  # Route 53
+  ##########################
+
+  PrimaryDnsHealthCheck:
+    Properties:
+      HealthCheckConfig:
+        Type: HTTP
+        Port: 80
+        ResourcePath: /api
+        FullyQualifiedDomainName: !Ref PrimaryAlbDNSName
+    Type: AWS::Route53::HealthCheck
+
+  PrimaryDNSRecord:
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - Name: !Ref DnsAlias
+          Type: A
+          Failover: PRIMARY
+          SetIdentifier: Primary
+          HealthCheckId: !Ref PrimaryDnsHealthCheck
+          AliasTarget:
+            DNSName: !Ref PrimaryAlbDNSName
+            HostedZoneId: !Ref PrimaryAlbCanonicalHostedZoneID
+            EvaluateTargetHealth: True
+        - Name: !Ref DnsAlias
+          Type: A
+          Failover: SECONDARY
+          SetIdentifier: Secondary
+          AliasTarget:
+            DNSName: !Ref SecondaryAlbDNSName
+            HostedZoneId: !Ref SecondaryAlbCanonicalHostedZoneID
+            EvaluateTargetHealth: False
+    Type: AWS::Route53::RecordSetGroup
+
+Outputs:
+  WatchServiceEndpoint:
+    Value: !Sub "http://${DnsAlias}/disaster-recovery"
+

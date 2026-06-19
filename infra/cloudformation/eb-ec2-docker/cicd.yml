@@ -1,0 +1,315 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CICD For a Java SpringBoot application deployed with Elastic BeanStalk on Docker
+Mappings:
+  SolutionStacks:
+    Single:
+      SolutionStackName: 64bit Amazon Linux 2 v3.5.3 running Docker
+      SpringProfilesActive: eb-single-docker
+    Multi:
+      SolutionStackName: 64bit Amazon Linux 2 v3.2.7 running ECS
+      SpringProfilesActive: eb-multi-docker
+Parameters:
+  ProjectName:
+    Type: String
+  DeploymentName:
+    Type: String
+  BranchName:
+    Type: String
+    Default: main
+  DockerPlatformType:
+    Type: String
+    Default: Single
+    AllowedValues:
+      - Single
+      - Multi
+
+Resources:
+
+  ####################
+  # S3 Artifact bucket
+  ####################
+
+  ArtifactOutputBucket:
+    Type: AWS::S3::Bucket
+
+  ########
+  # ECR
+  ########
+
+  ContainerImageRepository:
+    Type: AWS::ECR::Repository
+
+  ############
+  # CodeBuild
+  ############
+
+  CodeBuildServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: allow-to-push-to-S3
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:List*
+                Resource:
+                  - !Sub "arn:aws:s3:::${ArtifactOutputBucket}"
+                  - !Sub "arn:aws:s3:::${ArtifactOutputBucket}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:PutLogEvents
+                  - logs:PutRetentionPolicy
+                Resource: "arn:aws:logs:*"
+              - Effect: Allow
+                Action: codecommit:GitPull
+                Resource: '*'
+              - Effect: Allow
+                Resource: '*'
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetAuthorizationToken
+              - Effect: Allow
+                Action: cloudformation:CreateStack
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  CodeBuildJavaProject:
+    Properties:
+      Name: !Sub
+        - '${ProjectName}-${SpringProfile}'
+        - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+      ServiceRole: !Ref CodeBuildServiceRole
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub '${DeploymentName}/buildspec.yml'
+      SourceVersion: main
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:6.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Type: PLAINTEXT
+            Value: !Ref AWS::Region
+          - Name: PROJECT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: PROJECT_DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Sub
+              - '${ProjectName}-${SpringProfile}'
+              - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+          - Name: DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref DeploymentName
+          - Name: ARTIFACT_BUCKET
+            Type: PLAINTEXT
+            Value: !Ref ArtifactOutputBucket
+          - Name: DOCKER_PLATFORM_CONFIGURATION
+            Type: PLAINTEXT
+            Value: !Sub 'Dockerrun.aws.json.${DockerPlatformType}'
+          - Name: DOCKER_PLATFORM_NAME_TO_PASS
+            Type: PLAINTEXT
+            Value: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SolutionStackName ]
+          - Name: SPRING_PROFILES_ACTIVE_TO_PASS
+            Type: PLAINTEXT
+            Value: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+          - Name: AWS_ACCOUNT_ID
+            Type: PLAINTEXT
+            Value: !Ref AWS::AccountId
+          - Name: CONTAINER_IMAGE_REPOSITORY
+            Type: PLAINTEXT
+            Value: !Ref ContainerImageRepository
+      Cache:
+        Location: !Sub '${ArtifactOutputBucket}/cache'
+        Type: S3
+    Type: AWS::CodeBuild::Project
+
+  ###############
+  # CodePipeline
+  ###############
+
+  CodePipelineRole:
+    # Role for CodePipeline
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSCodePipeline_FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codecommit:*
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                Resource: '*'
+      RoleName: !Sub
+        - 'code-pipeline-role-${RealProjectDeploymentName}'
+        - RealProjectDeploymentName: !Sub
+            - '${ProjectName}-${SpringProfile}'
+            - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+    Type: AWS::IAM::Role
+
+  BuildProjectPipeline:
+    # Creating a build pipeline for your project in AWS CodePipeline
+    Properties:
+      Name: !Sub
+        - 'code-pipeline-role-${RealProjectDeploymentName}'
+        - RealProjectDeploymentName: !Sub
+            - '${ProjectName}-${SpringProfile}'
+            - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+      RoleArn: !GetAtt 'CodePipelineRole.Arn'
+      RestartExecutionOnUpdate: False
+      ArtifactStore:
+        Location: !Ref ArtifactOutputBucket
+        Type: S3
+      Stages:
+        - Name: SourceStage
+          Actions:
+            - Name: CodeCommit
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              OutputArtifacts:
+                - Name: source
+              Configuration:
+                BranchName: !Ref BranchName
+                RepositoryName: !Ref ProjectName
+                PollForSourceChanges: false
+                OutputArtifactFormat: CODEBUILD_CLONE_REF
+              Namespace: GitVariables
+        - Name: BuildStage
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildJavaProject
+              InputArtifacts:
+                - Name: source
+              OutputArtifacts:
+                - Name: infra
+        - Name: DeployStage
+          Actions:
+            - Name: Cloudformation
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub
+                  - '${RealProjectDeploymentName}-deploy'
+                  - RealProjectDeploymentName: !Sub
+                      - '${ProjectName}-${SpringProfile}'
+                      - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
+                RoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/CloudformationRole'
+                TemplatePath: "infra::infra.yml"
+                ParameterOverrides: !Sub
+                  - |
+                    {
+                      "ProjectDeploymentName": "${RealProjectDeploymentName}",
+                      "DeploymentName": "${DeploymentName}",
+                      "ProjectVersion": "#{GitVariables.CommitId}",
+                      "SolutionStackName": "${DockerPlatformName}",
+                      "SpringProfilesActive": "${RealSpringProfilesActive}",
+                      "ArtifactBucket": "${ArtifactOutputBucket}"
+                    }
+                  - RealProjectDeploymentName: !Sub
+                      - '${ProjectName}-${SpringProfile}'
+                      - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+                    RealSpringProfilesActive: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+                    DeploymentName: !Ref DeploymentName
+                    DockerPlatformName: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SolutionStackName ]
+                    ArtifactOutputBucket: !Ref ArtifactOutputBucket
+              RunOrder: 1
+    Type: AWS::CodePipeline::Pipeline
+
+  #####################################
+  # Starts the pipeline at each commit
+  # Pull request validation
+  #####################################
+
+  CiCdUtils:
+    Properties:
+      ProjectName: !Ref ProjectName
+      ProjectDeploymentName: !Sub
+        - '${ProjectName}-${SpringProfile}'
+        - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+      DeploymentName: !Ref DeploymentName
+      CodeBuildServiceRole: !Ref CodeBuildServiceRole
+      ArtifactOutputBucket: !Ref ArtifactOutputBucket
+      BranchName: !Ref BranchName
+      ProjectPipeline: !Ref BuildProjectPipeline
+    Type: Atomicity::CiCd::Utils::MODULE
+
+  ##########
+  # Cleanup
+  ##########
+
+  Cleanup:
+    Properties:
+      ProjectDeploymentName: !Sub
+        - '${ProjectName}-${SpringProfile}'
+        - SpringProfile: !FindInMap [ SolutionStacks, !Ref DockerPlatformType, SpringProfilesActive ]
+      ContainerImageRegistries: !Ref ContainerImageRepository
+      BucketNames: !Ref ArtifactOutputBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE
+
+Outputs:
+  ArtifactOutputBucket:
+    Value: !GetAtt ArtifactOutputBucket.RegionalDomainName

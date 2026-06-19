@@ -1,0 +1,405 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CICD For a Java SpringBoot application deployed with ECS Fargate behind ALB with Disaster recovery
+Parameters:
+  ProjectName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  BranchName:
+    Type: String
+    Default: main
+  PrimaryRegion:
+    Type: String
+    Default: eu-west-1
+  SecondaryRegion:
+    Type: String
+    Default: eu-west-3
+
+Resources:
+
+  ####################
+  # S3 Artifact bucket
+  ####################
+
+  ArtifactOutputBucket:
+    # Bucket for artifacts
+    Properties:
+      BucketName: !Sub '${ProjectDeploymentName}-primary'
+    Type: AWS::S3::Bucket
+
+  ########
+  # ECR
+  ########
+
+  ContainerImageRepository:
+    # ECR registry
+    Properties:
+      RepositoryName: !Ref ProjectDeploymentName
+    Type: AWS::ECR::Repository
+
+  ############
+  # Stack Set resources in secondary region
+  ############
+
+  AdministrationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AWSCloudFormationStackSetAdministrationRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: AssumeRole-AWSCloudFormationStackSetExecutionRole
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource:
+                  - "arn:*:iam::*:role/AWSCloudFormationStackSetExecutionRole"
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AWSCloudFormationStackSetExecutionRole
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref AWS::AccountId
+            Action:
+              - sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess'
+
+  StackSet:
+    Properties:
+      AdministrationRoleARN: !GetAtt AdministrationRole.Arn
+      ExecutionRoleName: !Ref ExecutionRole
+      OperationPreferences:
+        FailureToleranceCount: 0
+        MaxConcurrentCount: 1
+      PermissionModel: 'SELF_MANAGED'
+      StackInstancesGroup:
+        - DeploymentTargets:
+            Accounts:
+              - !Ref AWS::AccountId
+          Regions:
+            - !Ref SecondaryRegion
+      StackSetName: !Sub '${ProjectDeploymentName}-stack-set'
+      Capabilities:
+        - CAPABILITY_IAM
+        - CAPABILITY_AUTO_EXPAND
+      TemplateBody: !Sub |
+        AWSTemplateFormatVersion: 2010-09-09
+        Description: Deployment resources in alternate region
+        Resources:
+
+          ArtifactOutputBucketSecondary:
+            # Bucket for artifacts in secondary region
+            Properties:
+              BucketName: ${ProjectDeploymentName}-secondary
+            Type: AWS::S3::Bucket
+
+          ContainerImageRepositorySecondary:
+            # ECR registry in secondary region
+            Properties:
+              RepositoryName: ${ProjectDeploymentName}
+            Type: AWS::ECR::Repository
+        
+          Cleanup:
+            Properties:
+              ProjectDeploymentName: ${ProjectDeploymentName}
+              ContainerImageRegistries: !Ref ContainerImageRepositorySecondary
+              BucketNames: !Ref ArtifactOutputBucketSecondary
+            Type: Atomicity::Cleanup::Lambda::MODULE
+
+    Type: AWS::CloudFormation::StackSet
+
+  ############
+  # CodeBuild
+  ############
+
+  CodeBuildServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: allow-to-push-to-S3
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:List*
+                Resource:
+                  - !Sub "arn:aws:s3:::${ProjectDeploymentName}-primary"
+                  - !Sub "arn:aws:s3:::${ProjectDeploymentName}-primary/*"
+                  - !Sub "arn:aws:s3:::${ProjectDeploymentName}-secondary"
+                  - !Sub "arn:aws:s3:::${ProjectDeploymentName}-secondary/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:PutLogEvents
+                  - logs:PutRetentionPolicy
+                Resource: "arn:aws:logs:*"
+              - Effect: Allow
+                Action: codecommit:GitPull
+                Resource: '*'
+              - Effect: Allow
+                Resource: '*'
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetAuthorizationToken
+              - Effect: Allow
+                Action: cloudformation:CreateStack
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  CodeBuildJavaProject:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      ServiceRole: !Ref CodeBuildServiceRole
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub '${DeploymentName}/buildspec.yml'
+      SourceVersion: main
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:6.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_PRIMARY_REGION
+            Type: PLAINTEXT
+            Value: !Ref PrimaryRegion
+          - Name: AWS_SECONDAY_REGION
+            Type: PLAINTEXT
+            Value: !Ref SecondaryRegion
+          - Name: AWS_ACCOUNT_ID
+            Type: PLAINTEXT
+            Value: !Ref AWS::AccountId
+          - Name: PROJECT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: PROJECT_DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectDeploymentName
+          - Name: DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref DeploymentName
+      Cache:
+        Location: !Sub '${ArtifactOutputBucket}/cache'
+        Type: S3
+    Type: AWS::CodeBuild::Project
+
+  ###############
+  # CodePipeline
+  ###############
+
+  CodePipelineRole:
+    # Role for CodePipeline
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSCodePipeline_FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:CreateDeploymentGroup
+                  - codedeploy:GetApplication
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codecommit:*
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                Resource: '*'
+      RoleName: !Sub 'code-pipeline-role-${ProjectDeploymentName}'
+    Type: AWS::IAM::Role
+
+  BuildProjectPipeline:
+    # Creating a build pipeline for your project in AWS CodePipeline
+    Properties:
+      Name: !Sub ${ProjectDeploymentName}-build
+      RoleArn: !GetAtt 'CodePipelineRole.Arn'
+      RestartExecutionOnUpdate: False
+      # Multi-Region Pipeline needs several artifact stores
+      ArtifactStores:
+        - ArtifactStore:
+            Location: !Sub '${ProjectDeploymentName}-primary'
+            Type: S3
+          Region: !Ref PrimaryRegion
+        - ArtifactStore:
+            Location: !Sub '${ProjectDeploymentName}-secondary'
+            Type: S3
+          Region: !Ref SecondaryRegion
+      Stages:
+        - Name: SourceStage
+          Actions:
+            - Name: CodeCommit
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              OutputArtifacts:
+                - Name: source
+              Configuration:
+                BranchName: !Ref BranchName
+                RepositoryName: !Ref ProjectName
+                PollForSourceChanges: false
+                OutputArtifactFormat: CODEBUILD_CLONE_REF
+              Namespace: GitVariables
+        - Name: BuildStage
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildJavaProject
+              InputArtifacts:
+                - Name: source
+              OutputArtifacts:
+                - Name: infra
+        - Name: DeployStage
+          Actions:
+            - Name: CloudformationPrimary
+              Region: !Ref PrimaryRegion
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub '${ProjectDeploymentName}-deploy'
+                Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
+                RoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/CloudformationRole'
+                TemplatePath: "infra::infra.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "ProjectDeploymentName": "${ProjectDeploymentName}",
+                    "DeploymentName": "${DeploymentName}",
+                    "Region": "${PrimaryRegion}",
+                    "ProjectVersion": "#{GitVariables.CommitId}"
+                  }
+              RunOrder: 1
+            - Name: CloudformationSecondary
+              Region: !Ref SecondaryRegion
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: !Sub '${ProjectDeploymentName}-deploy'
+                Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
+                RoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/CloudformationRole'
+                TemplatePath: "infra::infra.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "ProjectDeploymentName": "${ProjectDeploymentName}",
+                    "DeploymentName": "${DeploymentName}",
+                    "Region": "${SecondaryRegion}",
+                    "ProjectVersion": "#{GitVariables.CommitId}"
+                  }
+              RunOrder: 1
+    DependsOn: StackSet
+    Type: AWS::CodePipeline::Pipeline
+
+  #####################################
+  # Starts the pipeline at each commit
+  # Pull request validation
+  #####################################
+
+  CiCdUtils:
+    Properties:
+      ProjectName: !Ref ProjectName
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      DeploymentName: !Ref DeploymentName
+      CodeBuildServiceRole: !Ref CodeBuildServiceRole
+      ArtifactOutputBucket: !Ref ArtifactOutputBucket
+      BranchName: !Ref BranchName
+      ProjectPipeline: !Ref BuildProjectPipeline
+    Type: Atomicity::CiCd::Utils::MODULE
+
+  ##########
+  # Cleanup
+  ##########
+
+  Cleanup:
+    Properties:
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      ContainerImageRegistries: !Ref ContainerImageRepository
+      BucketNames: !Ref ArtifactOutputBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE
+
+Outputs:
+  ArtifactOutputBucket:
+    Value: !GetAtt ArtifactOutputBucket.RegionalDomainName

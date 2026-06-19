@@ -1,0 +1,58 @@
+<!DOCTYPE HTML>
+<html lang="en"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
+      xmlns:th="http://www.thymeleaf.org"
+      data-bs-theme="dark">>
+<head>
+
+    <title>Blue Green App</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+
+    <!-- bootstrap -->
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}"/>
+    <script th:src="@{/webjars/bootstrap/5.3.0/js/bootstrap.min.js}"></script>
+
+    <!-- jquery -->
+    <script th:src="@{/webjars/jquery/3.4.1/jquery.min.js}"></script>
+
+    <!-- jquery datatable-->
+    <link rel="stylesheet" th:href="@{/webjars/datatables/1.10.19/css/jquery.dataTables.min.css}"/>
+    <script th:src="@{/webjars/datatables/1.10.19/js/jquery.dataTables.min.js}"></script>
+
+</head>
+
+<body>
+
+<div class="container-fluid p-5 text-center">
+    <h4>ECS Fargate</h4>
+    <h5>Cognito User Pool</h5>
+    <h5>Social sign-in with Google</h5>
+</div>
+
+<div class="container ml-1">
+
+    <div class="mt-5" sec:authorize="isAuthenticated()">
+        <!--  The <sec:authorize*> tag will help us to conditionally show certain information on the web pages
+        This content is only shown to authenticated users-->
+        <h5>Spring Security (Principal) User Attributes</h5>
+        <table id="sample" class="table table-bordered table-hover table-striped">
+            <thead>
+            <tr class="headings">
+                <!--  Spring Security with Thymeleaf also provide the #authentication object which we can use
+                to build conditional logic. This is similar to the sec:authentication tag.-->
+                <th class="column-title" th:text="Property" th:style="|background: ${color}|"/>
+                <th class="column-title" th:text="Value" th:style="|background: ${color}|"/>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="entrySet: ${#authentication.getPrincipal().attributes.entrySet}" class="even pointer"
+                id="tablerow">
+                <td><span th:text="${entrySet.getKey()}"></span></td>
+                <td><span th:text="${entrySet.getValue()}"></span></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+</body>
+</html>

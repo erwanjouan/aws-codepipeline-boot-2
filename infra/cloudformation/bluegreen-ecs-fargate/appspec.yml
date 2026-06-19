@@ -1,0 +1,10 @@
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: "arn:aws:ecs:eu-west-1:467420073914:task-definition/aws-codepipeline-boot-bluegreen-ecs-fargate:24"
+        LoadBalancerInfo:
+          ContainerName: "aws-codepipeline-boot-bluegreen-ecs-fargate"
+          ContainerPort: 8080
+        PlatformVersion: "LATEST"

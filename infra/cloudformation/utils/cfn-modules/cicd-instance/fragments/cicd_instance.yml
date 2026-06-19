@@ -1,0 +1,488 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation module for CiCd that builds jar artifact and deploys to a workload account
+Parameters:
+  ProjectName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  BranchName:
+    Type: String
+  ArtifactName:
+    Type: String
+    Default: app.jar
+  ArtifactDomainName:
+    Type: String
+  RepositoryName:
+    Type: String
+  MavenBuildProfile:
+    Type: String
+  CrossAccountRoleArn:
+    Type: String
+    Description: ARN of the IAM role that can be assumed by CodePipeline in target account
+  CloudFormationRoleArn:
+    Type: String
+    Description: ARN of IAM role that can be assumed by CloudFormation in target account
+  WorkloadAccountId:
+    Type: String
+  Architecture:
+    Type: String
+    AllowedValues:
+      - arm64
+      - x86
+  BuildSpecPath:
+    Type: String
+    Default: utils/cfn-modules/cicd-instance/buildspec.yml
+
+Resources:
+
+  ####################
+  # S3 Artifact bucket
+  ####################
+
+  ArtifactOutputBucket:
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt KmsKey.Arn
+    Type: AWS::S3::Bucket
+
+  BucketPolicy:
+    Properties:
+      Bucket: !Ref ArtifactOutputBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !GetAtt CodePipelineRole.Arn
+                - !Ref CrossAccountRoleArn
+                - !Ref CloudFormationRoleArn
+            Action: 's3:*'
+            Resource:
+              - !GetAtt ArtifactOutputBucket.Arn
+              - !Sub arn:aws:s3:::${ArtifactOutputBucket}/*
+    Type: AWS::S3::BucketPolicy
+
+  ############
+  # CodeArtifact
+  ############
+
+  ArtifactDomain:
+    Properties:
+      DomainName: !Ref ArtifactDomainName
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Principal:
+            AWS: !Sub arn:aws:iam::${WorkloadAccountId}:root
+          Effect: Allow
+          Action: codeartifact:GetAuthorizationToken
+          Resource: '*'
+    Type: AWS::CodeArtifact::Domain
+
+  ArtifactRepository:
+    Properties:
+      DomainName: !GetAtt ArtifactDomain.Name
+      DomainOwner: !Ref AWS::AccountId
+      RepositoryName: !Ref RepositoryName
+      PermissionsPolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: Allow
+          Principal:
+            AWS: !Sub arn:aws:iam::${WorkloadAccountId}:root
+          Action:
+            - codeartifact:DescribePackageVersion
+            - codeartifact:DescribeRepository
+            - codeartifact:GetPackageVersionReadme
+            - codeartifact:GetRepositoryEndpoint
+            - codeartifact:GetPackageVersionAsset
+            - codeartifact:ListPackages
+            - codeartifact:ListPackageVersions
+            - codeartifact:ListPackageVersionAssets
+            - codeartifact:ListPackageVersionDependencies
+            - codeartifact:ReadFromRepository
+          Resource: '*'
+    Type: AWS::CodeArtifact::Repository
+
+  ############
+  # CodeBuild
+  ############
+
+  CodeBuildServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess # to avoid circular dependencies
+      Policies:
+        - PolicyName: codebuild-service-role
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:PutLogEvents
+                  - logs:PutRetentionPolicy
+                Resource: "arn:aws:logs:*"
+              - Effect: Allow
+                Action: codecommit:GitPull
+                Resource: '*'
+              - Effect: Allow
+                Action: cloudformation:CreateStack
+                Resource: '*'
+              - Sid: TestReport
+                Effect: Allow
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                Resource: !Sub "arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/*"
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DecryptKey
+                  - kms:Encrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                Resource: '*'
+        - PolicyName: allows-to-interact-with-code-artifact
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CodeArtifactRetrieval
+                Effect: Allow
+                Action:
+                  - codeartifact:GetAuthorizationToken
+                  - codeartifact:GetRepositoryEndpoint
+                  - codeartifact:ReadFromRepository
+                Resource: "*"
+              - Effect: Allow
+                Action: sts:GetServiceBearerToken
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "sts:AWSServiceName": codeartifact.amazonaws.com
+              - Sid: CodeArtifactPublish
+                Effect: Allow
+                Action:
+                  - codeartifact:PublishPackageVersion
+                  - codeartifact:PutPackageMetadata
+                Resource: "*"
+              - Sid: GetParameter
+                Effect: Allow
+                Action:
+                  - ssm:DescribeParameters
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  CodeBuildJavaProject:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      ServiceRole: !Ref CodeBuildServiceRole
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Ref BuildSpecPath
+      SourceVersion: main
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:6.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Type: PLAINTEXT
+            Value: !Ref AWS::Region
+          - Name: PROJECT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectName
+          - Name: PROJECT_DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ProjectDeploymentName
+          - Name: DEPLOYMENT_NAME
+            Type: PLAINTEXT
+            Value: !Ref DeploymentName
+          - Name: ARTIFACT_BUCKET
+            Type: PLAINTEXT
+            Value: !Ref ArtifactOutputBucket
+          - Name: ARTIFACT_NAME
+            Type: PLAINTEXT
+            Value: !Ref ArtifactName
+          - Name: AWS_ACCOUNT_ID
+            Type: PLAINTEXT
+            Value: !Ref AWS::AccountId
+          - Name: CODEARTIFACT_REPOSITORY_URL
+            Type: PLAINTEXT
+            Value: !Sub "https://${ArtifactDomainName}-${AWS::AccountId}.d.codeartifact.${AWS::Region}.amazonaws.com/maven/${RepositoryName}/"
+          - Name: MAVEN_BUILD_PROFILE
+            Type: PLAINTEXT
+            Value: !Ref MavenBuildProfile
+          - Name: ARCHITECTURE
+            Type: PLAINTEXT
+            Value: !Ref Architecture
+          - Name: ARTIFACT_DOMAIN_NAME
+            Type: PLAINTEXT
+            Value: !Ref ArtifactDomainName
+      Cache:
+        Location: !Sub ${ArtifactOutputBucket}/cache
+        Type: S3
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Sub /aws/codebuild/${ProjectDeploymentName}
+    DependsOn: CodeBuildLogGroup
+    Type: AWS::CodeBuild::Project
+
+  CodeBuildLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/codebuild/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  ###############
+  # CodePipeline
+  ###############
+
+  CodePipelineRole:
+    # Role for CodePipeline
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AWSCodePipeline_FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonS3FullAccess'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - iam:PassRole
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:CreateDeploymentGroup
+                  - codedeploy:GetApplication
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:RegisterApplicationRevision
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codecommit:*
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DecryptKey
+                  - kms:Encrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                Resource: '*'
+              - Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !Ref CrossAccountRoleArn
+      RoleName: !Sub code-pipeline-role-${ProjectDeploymentName}
+    Type: AWS::IAM::Role
+
+  BuildProjectPipeline:
+    # Creating a build pipeline for your project in AWS CodePipeline
+    Properties:
+      Name: !Sub ${ProjectDeploymentName}-build
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      RestartExecutionOnUpdate: False
+      ArtifactStore:
+        Location: !Ref ArtifactOutputBucket
+        Type: S3
+        EncryptionKey:
+          Id: !GetAtt KmsKey.Arn
+          Type: KMS
+      Stages:
+        - Name: SourceStage
+          Actions:
+            - Name: CodeCommit
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: 1
+              OutputArtifacts:
+                - Name: source
+              Configuration:
+                BranchName: !Ref BranchName
+                RepositoryName: !Ref ProjectName
+                PollForSourceChanges: false
+                OutputArtifactFormat: CODEBUILD_CLONE_REF
+              Namespace: GitVariables
+        - Name: BuildStage
+          Actions:
+            - Name: CodeBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildJavaProject
+              InputArtifacts:
+                - Name: source
+              OutputArtifacts:
+                - Name: infra
+              Namespace: BuildVariables
+        - Name: DeployStage
+          Actions:
+            - Name: create-changeset
+              RoleArn: !Ref CrossAccountRoleArn
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: 1
+              InputArtifacts:
+                - Name: infra
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: !Sub ${ProjectDeploymentName}-deploy
+                ChangeSetName: !Sub ${ProjectDeploymentName}-deploy
+                Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
+                RoleArn: !Ref CloudFormationRoleArn # the action will be executed with this role
+                TemplatePath: "infra::infra.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "ProjectDeploymentName": "${ProjectDeploymentName}",
+                    "DeploymentName": "${DeploymentName}",
+                    "ArtifactName": "${ArtifactName}",
+                    "ProjectName": "${ProjectName}",
+                    "ProjectVersion": "#{GitVariables.CommitId}",
+                    "ArtifactDomainName": "${ArtifactDomainName}",
+                    "RepositoryName": "${RepositoryName}",
+                    "LatestAmiId": "#{BuildVariables.LATEST_AMI_ID}",
+                    "CiCdAccountId": "${AWS::AccountId}",
+                    "Architecture": "${Architecture}"
+                  }
+              RunOrder: 1
+            - Name: execute-changeset
+              RoleArn: !Ref CrossAccountRoleArn # the pipeline assume this role to execute this action
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                StackName: !Sub ${ProjectDeploymentName}-deploy
+                ChangeSetName: !Sub ${ProjectDeploymentName}-deploy
+                ActionMode: CHANGE_SET_EXECUTE
+                RoleArn: !Ref CloudFormationRoleArn   # the action will be executed with this role
+              RunOrder: 2
+    Type: AWS::CodePipeline::Pipeline
+
+  ###############
+  # KMS
+  ###############
+
+  KmsKey:
+    Properties:
+      Description: KMS key for CodePipeline artifacts
+      Enabled: true
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-default-1
+        Statement:
+          - Sid: Allows admin of the key
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow use of key in another account
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Ref CrossAccountRoleArn
+                - !Ref CloudFormationRoleArn
+                - !GetAtt CodePipelineRole.Arn
+            Action:
+              - kms:Decrypt
+              - kms:DecryptKey
+              - kms:Encrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+            Resource: '*'
+    Type: AWS::KMS::Key
+
+  KmsAlias:
+    Properties:
+      AliasName: alias/codepipeline-cross-account
+      TargetKeyId: !Ref KmsKey
+    Type: AWS::KMS::Alias
+
+  #####################################
+  # Starts the pipeline at each commit
+  # Pull request validation
+  #####################################
+
+  CiCdUtils:
+    Properties:
+      ProjectName: !Ref ProjectName
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      DeploymentName: !Ref DeploymentName
+      CodeBuildServiceRole: !Ref CodeBuildServiceRole
+      ArtifactOutputBucket: !Ref ArtifactOutputBucket
+      BranchName: !Ref BranchName
+      ProjectPipeline: !Ref BuildProjectPipeline
+    Type: Atomicity::CiCd::Utils::MODULE
+
+  ##########
+  # Cleanup
+  ##########
+
+  Cleanup:
+    Properties:
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      ContainerImageRegistries: ''
+      BucketNames: !Ref ArtifactOutputBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE
+
+Outputs:
+  ArtifactOutputBucket:
+    Value: !GetAtt ArtifactOutputBucket.RegionalDomainName

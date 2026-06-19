@@ -1,0 +1,6 @@
+{"Item":{"Id":{"S": "1"},"Name":{"S": "SDLC Automation (22%)"},"Parent":{"S": "DOP-C02"}}}
+{"Item":{"Id":{"S": "2"},"Name":{"S": "Configuration Management and IaC (17%)"},"Parent":{"S": "DOP-C02"}}}
+{"Item":{"Id":{"S": "3"},"Name":{"S": "Resilient Cloud Solutions (15%)"},"Parent":{"S": "DOP-C02"}}}
+{"Item":{"Id":{"S": "4"},"Name":{"S": "Monitoring and Logging (15%)"},"Parent":{"S": "DOP-C02"}}}
+{"Item":{"Id":{"S": "5"},"Name":{"S": "Incident and Event Response (14%)"},"Parent":{"S": "DOP-C02"}}}
+{"Item":{"Id":{"S": "6"},"Name":{"S": "Security and Compliance (17%)"},"Parent":{"S": "DOP-C02"}}}

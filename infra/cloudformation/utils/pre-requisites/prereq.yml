@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CICD Multi-Account Pre-requisites
+Parameters:
+  ProjectName:
+    Type: String
+  CIAccountId:
+    Type: String
+    Default: 163822821219
+
+Resources:
+
+  CrossAccountRole:
+    Properties:
+      RoleName: !Sub ${ProjectName}-cross-account-role
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${CIAccountId}:root" #  same as !Ref CIAccountId
+            Action: sts:AssumeRole
+    Type: AWS::IAM::Role
+
+  CrossAccountPolicy:
+    Properties:
+      PolicyName: CrossAccountPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudformation:*
+              - codebuild:*
+              - s3:*
+              - iam:PassRole
+            Resource: "*"
+          - Effect: Allow
+            Action: [ "kms:Decrypt", "kms:Encrypt" ]
+            Resource: !Sub arn:aws:kms:eu-west-1:${CIAccountId}:key/*
+      Roles: [ !Ref CrossAccountRole ]
+    Type: AWS::IAM::Policy
+
+  CloudFormationRole:
+    Properties:
+      RoleName: !Sub ${ProjectName}-cloudformation-role
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ cloudformation.amazonaws.com ]
+            Action: sts:AssumeRole
+    Type: AWS::IAM::Role
+
+  CrossAccountAmiRole:
+    Properties:
+      RoleName: !Sub ${ProjectName}-cross-ami-role
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/Ec2ImageBuilderCrossAccountDistributionAccess
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: sts:AssumeRole
+    Type: AWS::IAM::Role
+
+Outputs:
+  CloudFormationRoleArn:
+    Value: !GetAtt CloudFormationRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-cloudformation-role-arn
+  CrossAccountRoleArn:
+    Value: !GetAtt CrossAccountRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-cross-account-role-arn

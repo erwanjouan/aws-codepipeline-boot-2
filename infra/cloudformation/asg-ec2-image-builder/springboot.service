@@ -1,0 +1,13 @@
+[Unit]
+Description=Test Spring Boot Getting Started
+After=syslog.target
+
+[Service]
+Environment="SPRING_PROFILES_ACTIVE=asg-ec2-image-builder"
+User=springboot
+WorkingDirectory=/opt/springboot
+ExecStart=/usr/bin/java -jar /opt/springboot/app.jar
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

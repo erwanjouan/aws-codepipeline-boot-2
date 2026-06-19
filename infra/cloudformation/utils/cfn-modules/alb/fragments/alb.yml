@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation module for Alb resources
+Parameters:
+  ApplicationPort:
+    Type: String
+  AlbPort:
+    Type: String
+  VPC:
+    Type: String
+  PublicSubnet1:
+    Type: String
+  PublicSubnet2:
+    Type: String
+  HealthCheckPath:
+    Type: String
+  TargetType: # 'ip' for awsvpc (Fargate) mode, else 'instance'
+    Type: String
+    Default: instance
+  ElbAccountId:
+    Type: String
+    Default: 156460612806 # For access logs, See https://docs.aws.amazon.com/elasticloadbalancing/latest/application/enable-access-logging.html#attach-bucket-policy
+  AccessLogsEnabled:
+    Type: String
+    Default: false
+  ProjectDeploymentName:
+    Type: String
+  EnableSecondaryTargetGroup:
+    Type: String
+    Default: false
+  CertificateId:
+    Type: String
+    Default: None
+
+Conditions:
+  IsAlbAccessLogsEnabled: !Equals [ !Ref AccessLogsEnabled, true ]
+  HasSecondaryTargetGroup: !Equals [ !Ref EnableSecondaryTargetGroup, true ]
+  HasCertificate: !Not [ !Equals [ !Ref CertificateId, None ] ]
+
+Resources:
+
+  ##########################
+  # ALB
+  ##########################
+
+  AccessLogsBucket:
+    Condition: IsAlbAccessLogsEnabled
+    Type: AWS::S3::Bucket
+
+  BucketPolicy:
+    Condition: IsAlbAccessLogsEnabled
+    Properties:
+      Bucket: !Ref AccessLogsBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${ElbAccountId}:root'
+            Action: 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::${AccessLogsBucket}/AWSLogs/${AWS::AccountId}/*'
+    Type: AWS::S3::BucketPolicy
+
+  SecurityGroup:
+    Properties:
+      GroupDescription: Allows access to ALB from internet
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref AlbPort
+          ToPort: !Ref AlbPort
+          CidrIp: 0.0.0.0/0
+    Type: AWS::EC2::SecurityGroup
+
+  Instance:
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+        - Key: access_logs.s3.enabled
+          Value: !If
+            - IsAlbAccessLogsEnabled
+            - true
+            - false
+        - Key: access_logs.s3.bucket
+          Value: !If
+            - IsAlbAccessLogsEnabled
+            - !Ref AccessLogsBucket
+            - !Ref AWS::NoValue
+      Subnets: [ !Ref PublicSubnet1, !Ref PublicSubnet2 ] # Should be public
+      SecurityGroups:
+        - !Ref SecurityGroup
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+
+  Listener:
+    Properties:
+      Certificates:
+        - CertificateArn: !If
+            - HasCertificate
+            - !Sub arn:aws:acm:${AWS::Region}:${AWS::AccountId}:certificate/${CertificateId}
+            - !Ref AWS::NoValue
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn:
+        Ref: Instance
+      Port: !Ref AlbPort
+      Protocol: !If
+        - HasCertificate
+        - HTTPS
+        - HTTP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+
+  TargetGroup:
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      UnhealthyThresholdCount: 2
+      HealthyThresholdCount: 2
+      HealthCheckPath: !Ref HealthCheckPath
+      Port: !Ref ApplicationPort
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: !Ref TargetType
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 5
+    DependsOn: Instance
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+
+  TargetGroupSecondary:
+    Condition: HasSecondaryTargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      UnhealthyThresholdCount: 2
+      HealthyThresholdCount: 2
+      HealthCheckPath: !Ref HealthCheckPath
+      Port: !Ref ApplicationPort
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: !Ref TargetType
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 5
+    DependsOn: Instance
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+
+  ##########################
+  # Cleanup AccessLogsBucket
+  ##########################
+
+  Cleanup:
+    Condition: IsAlbAccessLogsEnabled
+    Properties:
+      ProjectDeploymentName: !Sub ${ProjectDeploymentName}-alb
+      ContainerImageRegistries: ''
+      # noinspection YamlUnresolvedReferences
+      BucketNames: !Ref AccessLogsBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE

@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed on ECS Fargate behind an ALB
+
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  ApplicationPort:
+    Type: String
+    Default: 8080
+  DesiredCount:
+    Type: String
+    Default: 2
+  AlbPort:
+    Type: String
+    Default: 80
+  Region:
+    Type: String
+  DnsAlias:
+    Type: String
+    Default: sandbox.theatomicity.com
+  HostedZoneId:
+    Type: String
+    Default: Z1V5NVBGOC3M9Z
+  AlbAccessLogsEnabled:
+    Type: String
+    Default: false
+
+Conditions:
+  IsPrimaryRegionResource: !Equals
+    - !Ref Region
+    - eu-west-1
+  IsSecondaryRegionResource: !Equals
+    - !Ref Region
+    - eu-west-3
+
+Resources:
+
+  ##########
+  # Network
+  ##########
+
+  Network:
+    Type: Atomicity::Vpc::Internet::MODULE
+
+  ##########################
+  # ALB
+  ##########################
+
+  Alb:
+    Properties:
+      ApplicationPort: !Ref ApplicationPort
+      AlbPort: !Ref AlbPort
+      # noinspection YamlUnresolvedReferences
+      VPC: !Ref NetworkVPC
+      # noinspection YamlUnresolvedReferences
+      PublicSubnet1: !Ref NetworkPublicSubnet1
+      # noinspection YamlUnresolvedReferences
+      PublicSubnet2: !Ref NetworkPublicSubnet2
+      HealthCheckPath: /actuator/health
+      TargetType: ip
+      AccessLogsEnabled: !Ref AlbAccessLogsEnabled
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+    # noinspection YamlUnresolvedReferences
+    DependsOn: NetworkGatewayToInternet
+    Type: Atomicity::Alb::Resources::MODULE
+
+  ##########################
+  # ECS
+  ##########################
+
+  ECSTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub ${ProjectDeploymentName}-ecs-task-info
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+        - PolicyName: !Sub ${ProjectDeploymentName}-ecs-service-info
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: !Sub "arn:aws:ecs:${Region}:${AWS::AccountId}:service/${ProjectDeploymentName}/${ProjectDeploymentName}"
+                Effect: Allow
+                Action:
+                  - ecs:ListServices
+                  - ecs:DescribeServices
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+    Type: AWS::IAM::Role
+
+  EcsFargateSecurityGroup:
+    Properties:
+      GroupDescription: allow access to ECS from ALB
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ApplicationPort
+          ToPort: !Ref ApplicationPort
+          # noinspection YamlUnresolvedReferences
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+
+  EcsFargateLogGroup:
+    Properties:
+      LogGroupName: !Sub /ecs/fargate/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  EcsFargateTaskDefinition:
+    # ECS Task Definition
+    Properties:
+      NetworkMode: awsvpc
+      Family: !Ref ProjectDeploymentName
+      Cpu: 512
+      Memory: 1024
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn # Fargate requires task definition to have execution role ARN to support ECR images
+      TaskRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: !Ref ProjectDeploymentName
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${Region}.amazonaws.com/${ProjectDeploymentName}:${ProjectVersion}'
+          Environment:
+            - Name: SERVER_PORT
+              Value: !Ref ApplicationPort
+            - Name: SPRING_PROFILES_ACTIVE
+              Value: !Ref DeploymentName
+            - Name: PROJECT_DEPLOYMENT_NAME
+              Value: !Ref ProjectDeploymentName
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref Region
+              awslogs-group: !Ref EcsFargateLogGroup
+              awslogs-stream-prefix: oam-ecs
+          PortMappings:
+            - ContainerPort: !Ref ApplicationPort
+    Type: AWS::ECS::TaskDefinition
+
+  EcsFargateCluster:
+    # ECS Cluster
+    Properties:
+      ClusterName: !Ref ProjectDeploymentName
+    Type: AWS::ECS::Cluster
+
+  EcsFargateService:
+    # ECS Service
+    Properties:
+      ServiceName: !Ref ProjectDeploymentName
+      Cluster: !Ref EcsFargateCluster
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      LoadBalancers:
+        - # noinspection YamlUnresolvedReferences
+          TargetGroupArn: !Ref AlbTargetGroup # loadBalancerName and targetGroupArn cannot both be specified. You must specify either a loadBalancerName or a targetGroupArn.
+          ContainerPort: !Ref ApplicationPort
+          ContainerName: !Ref ProjectDeploymentName
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          #AssignPublicIp: ENABLED # unless a NAT / Route needs to be opened to ECR
+          SecurityGroups:
+            - !Ref EcsFargateSecurityGroup
+          # noinspection YamlUnresolvedReferences
+          Subnets: [ !Ref NetworkPrivateSubnet1, !Ref NetworkPrivateSubnet2 ]
+      TaskDefinition: !Ref 'EcsFargateTaskDefinition'
+    # noinspection YamlUnresolvedReferences
+    DependsOn:
+      - AlbListener # unless "The target group does not have an associated load balancer"
+      - EcsFargateLogGroup
+    Type: AWS::ECS::Service
+
+  ###############
+  # VPC Endpoints
+  ###############
+
+  VpcEndPoints:
+    Properties:
+      # noinspection YamlUnresolvedReferences
+      VPC: !Ref NetworkVPC
+      # noinspection YamlUnresolvedReferences
+      PrivateSubnet1: !Ref NetworkPrivateSubnet1
+      # noinspection YamlUnresolvedReferences
+      PrivateSubnet2: !Ref NetworkPrivateSubnet2
+    Type: Atomicity::Vpc::Endpoints::MODULE
+
+Outputs:
+  LoadBalancerName:
+    # noinspection YamlUnresolvedReferences
+    Value: !GetAtt AlbInstance.LoadBalancerName
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalancerName"
+  LoadBalanderDNSName:
+    Value: !Sub
+      - "${LbDNSName}/api"
+      - # noinspection YamlUnresolvedReferences
+        LbDNSName: !GetAtt AlbInstance.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-LoadBalanderDNSName"
+  WatchServiceEndpoint:
+    Value: !Sub
+      - "http://${LbDNSName}/${DeploymentName}"
+      - # noinspection YamlUnresolvedReferences
+        LbDNSName: !GetAtt AlbInstance.DNSName
+  ApplicationLoadBalancerDNSName:
+    # noinspection YamlUnresolvedReferences
+    Value: !GetAtt AlbInstance.DNSName
+  ApplicationLoadBalancerCanonicalHostedZoneID:
+    # noinspection YamlUnresolvedReferences
+    Value: !GetAtt AlbInstance.CanonicalHostedZoneID

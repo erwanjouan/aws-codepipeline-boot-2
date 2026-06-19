@@ -1,0 +1,23 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - aws --version && docker --version && java --version && mvn --version
+  build:
+    commands:
+      - mvn package
+  post_build:
+    commands:
+      - ls ${DEPLOYMENT_NAME}
+      - cp target/*.jar ${DEPLOYMENT_NAME}/codedeploy/app.jar
+      - envsubst < ${DEPLOYMENT_NAME}/codedeploy/start.sh.template > ${DEPLOYMENT_NAME}/codedeploy/start.sh
+      - cd ${DEPLOYMENT_NAME}/codedeploy/ && zip -r ../codeDeployAppRevision.zip . && cd ..
+      - aws s3 cp codeDeployAppRevision.zip s3://${ARTIFACT_BUCKET}/${CODEBUILD_RESOLVED_SOURCE_VERSION}/codeDeployAppRevision.zip
+artifacts:
+  files:
+    - ${DEPLOYMENT_NAME}/infra.yml
+  discard-paths: yes
+
+cache:
+  paths:
+    - /root/.m2/**/*

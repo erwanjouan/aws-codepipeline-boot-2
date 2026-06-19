@@ -1,0 +1,109 @@
+{
+    "typeName": "Atomicity::Cleanup::Lambda::MODULE",
+    "description": "Schema for Module Fragment of type Atomicity::Cleanup::Lambda::MODULE",
+    "properties": {
+        "Parameters": {
+            "type": "object",
+            "properties": {
+                "ProjectDeploymentName": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "Type"
+                    ]
+                },
+                "ContainerImageRegistries": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string"
+                        },
+                        "Description": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "Type",
+                        "Description"
+                    ],
+                    "description": "List of container image registries to delete"
+                },
+                "BucketNames": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string"
+                        },
+                        "Description": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "Type",
+                        "Description"
+                    ],
+                    "description": "List of bucket names to delete"
+                }
+            }
+        },
+        "Resources": {
+            "properties": {
+                "Lambda": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::Lambda::Function"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "LambdaLogGroup": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::Logs::LogGroup"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "LambdaExecutionRole": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::IAM::Role"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "CustomResourceCleanup": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "Custom::Lambda"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                }
+            },
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "additionalProperties": true
+}

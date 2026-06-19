@@ -1,0 +1,17 @@
+{
+  "AWSEBDockerrunVersion": "2",
+  "containerDefinitions": [
+    {
+      "name": "SpringBoot",
+      "image": "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${CONTAINER_IMAGE_REPOSITORY}:${CODEBUILD_RESOLVED_SOURCE_VERSION}",
+      "memory": "1024",
+      "essential": true,
+      "portMappings": [
+        {
+          "hostPort": 80,
+          "containerPort": 8080
+        }
+      ]
+    }
+  ]
+}

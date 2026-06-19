@@ -1,0 +1,258 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "This template creates a SMM RunCommand document that automatically mounts EBS volumes."
+
+Resources:
+
+    MountEBSVolumesCommand:
+      Type: AWS::SSM::Document
+      Properties:
+        DocumentFormat: YAML
+        DocumentType: Command
+        VersionName: 1.0
+        Name: MountEBSVolumes
+        Content:
+          description: Use this document to mount attached EBS volumes providing device names, corresponding mount directories, volume ids and file systems.
+          schemaVersion: '2.2'
+          parameters:
+            DeviceNames:
+              type: String
+              description: "(Required) Device names used within Amazon EC2. Enter device names separated by a space. For example: /dev/sdb /dev/sdf"
+              allowedPattern: "^[^'\",;&\\|><\\*\\?`\\$\\(\\)\\{\\}\\[\\]!#\\\\]*$"
+            VolumeIds:
+              type: String
+              description: "(Required) Attached EBS volume IDs. Enter volume IDs separated by a space. For example: vol-id123 vol-id345"
+              allowedPattern: "^(vol-[0-9a-f]{17})(\\s+vol-[0-9a-f]{17})*$"
+            MountDirectories:
+              type: String
+              description: "(Required) Mount point directories for the corresponding EBS volumes. Enter mount directories separated by a space. For example: /mnt/sdb /mnt/sdf"
+              allowedPattern: "^[^'\",;&\\|><\\*\\?`\\$\\(\\)\\{\\}\\[\\]!#\\\\]*$"
+            FileSystemTypes:
+              type: String
+              description: "(Optional) File system types that will be created on the provided EBS devices. Enter file systems separated by a space. For example: ext4 xfs. If nothing is provided, xfs will be chosen as a file system type for all given EBS devices."
+              default: ""
+              allowedPattern: "^[^'\",;&\\|><\\*\\?`\\$\\(\\)\\{\\}\\[\\]!#\\\\]*$"              
+          mainSteps:
+            - name: mountEBSvolumes
+              action: aws:runShellScript
+              precondition:
+                StringEquals:
+                - platformType
+                - Linux
+              inputs:
+                runCommand: 
+                  - |
+                    #!/bin/bash
+
+
+                    function report_info() {
+                        echo "INFO: $*"
+                    }
+
+                    function report_error() {
+                        echo "ERROR: $*" 1>&2
+                    }
+
+                    function report_warning() {
+                        echo "WARNING: $*"
+                    }
+
+                    function throw_error() {
+                        report_error "$*"
+                        exit 1
+                    }
+
+                    function install_mkfs() {
+                        local os="$1"
+                        if [[ "$os" == *"Ubuntu"* ]]; then
+                          apt-get update &>/dev/null
+                          apt-get install xfsprogs -y &>/dev/null
+                        else
+                          yum install -y xfsprogs &>/dev/null
+                        fi
+                    }
+
+                    function install_nvme_cli() {
+                        local os="$1"
+                        if test -f "/etc/debian_version"; then
+                          if [[ "$os" == *"Ubuntu"*  ]]; then
+                              ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' |  awk -F'.' '{print $1}')
+                              if [[ "$ubuntu_version" == "14" ]]; then
+                                  add-apt-repository ppa:sbates -y &>/dev/null
+                              fi
+                          fi
+                          apt-get update &>/dev/null
+                          apt install nvme-cli -y &>/dev/null
+                        else
+                          yum install -y nvme-cli &>/dev/null
+                        fi
+                    }
+
+                    function get_mount_options() {
+                        local os="$1"
+                        if test -f "/etc/debian_version"; then
+                          if [[ "$os" == *"Ubuntu"*  ]]; then
+                            ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' |  awk -F'.' '{print $1}')
+                            if [[ $(($ubuntu_version < 16)) == 1 ]]; then
+                                echo "defaults,nofail,nobootwait"
+                            else
+                                echo "defaults,nofail"
+                            fi
+                          else
+                            echo "defaults,nofail,nobootwait"
+                          fi
+                        else
+                          echo "defaults,nofail"
+                        fi
+                    }
+
+                    function check_nvme_based() {
+                      if [[ $(grep -R "nvme" /proc/diskstats) ]] && [[ ! $(grep -R "xvda" /proc/diskstats) ]]; then
+                          echo true
+                      else
+                          echo false
+                      fi
+                    }
+
+                    function get_volume_id() {
+                      local device_name="$1"
+                      local os_name="$2"
+                      if test -f /sbin/ebsnvme-id; then
+                          volume_id=$(/sbin/ebsnvme-id "$device_name" | sed -n 's/Volume ID: //p')
+                      else
+                          if [ ! -f /usr/sbin/nvme ]; then
+                              install_nvme_cli "$os_name"
+                          fi
+                          if [[ "$(/usr/sbin/nvme id-ctrl "$device_name" | grep "mn ")" == *"Amazon Elastic Block"* ]]; then
+                              volume_id=$(/usr/sbin/nvme id-ctrl "$device_name" | sed -n 's/sn //p' | tr -d ': ,' | sed "s/^vol/vol-/")
+                          else
+                              volume_id=''
+                          fi
+                      fi
+                      echo "$volume_id"
+                    }
+
+                    function get_nvme_device_name() {
+                      local volume_id="$1"
+                      local os_name="$2"
+                      real_nvme_device_name=''
+                      available_nvme_devices=( $(egrep -o 'nvme[0-9]{1,2}n1' /proc/diskstats | uniq) )
+                      for nvme_device in "${available_nvme_devices[@]}"; do
+                          full_nvme_device_name="/dev/$nvme_device"
+                          ebs_volume_id=$(get_volume_id "$full_nvme_device_name" "$os_name")
+                          if [[ "$ebs_volume_id" ==  "$volume_id" ]]; then
+                              real_nvme_device_name="$full_nvme_device_name"
+                              break
+                          fi
+                      done
+                      echo "$real_nvme_device_name"
+                    }
+
+                    function get_real_device_name() {
+                        local os_name="$1"
+                        local device_name="$2"
+                        local volume_id="$3"
+                        local os_version="$4"
+                        if $(check_nvme_based); then
+                          if [[ "$os_name" == *"Amazon Linux"* ]] && ([[ "$os_version" == "2" ]] || [[ "$os_version" == "2018.03" ]]); then
+                              ACTUAL_DEVICE_NAME=$(readlink -f "$device_name")
+                          else
+                              ACTUAL_DEVICE_NAME=$(get_nvme_device_name "$volume_id" "$os_name")
+                          fi
+                        else
+                          if [[ "$os_name" == *"Amazon Linux"* ]]; then
+                              ACTUAL_DEVICE_NAME=$(readlink -f "$device_name")
+                          fi
+                          pattern="dev/sd"
+                          replacement="dev/xvd"
+                          ACTUAL_DEVICE_NAME="${device_name/$pattern/$replacement}"
+                        fi
+                        echo $ACTUAL_DEVICE_NAME
+                    }
+
+                    function check_provided_variables() {
+                      local device_names_number="$1"
+                      local volume_ids_number="$2"
+                      local mount_directories_number="$3"
+                      local file_system_types_number="$4"
+                      if [[ $device_names_number != $mount_directories_number ]]; then
+                          throw_error "Number of device names and corresponding mount directories should be the same."
+                      fi
+                      if [[ $device_names_number != $volume_ids_number ]]; then
+                          throw_error "Number of device names and corresponding volume IDs should be the same."
+                      fi
+                      if [[ $mount_directories_number != $volume_ids_number ]]; then
+                          throw_error "Number of mount directories and corresponding volume IDs should be the same."
+                      fi
+                      if [[ $file_system_types_number != $device_names_number ]]; then
+                          throw_error "Number of file system types and corresponding device names should be the same."
+                      fi
+                    }
+
+                    function delete_fstab_etries_for_device_and_mount_point() {
+                      local device_name="$1"
+                      local mount_point="$2"
+                      local uuid="$3"
+                      sed -i "\\|$device_name|d" /etc/fstab
+                      sed -i "\\|$mount_point|d" /etc/fstab
+                      sed -i "\\|$uuid|d" /etc/fstab
+                    }
+
+                    DEVICE_NAMES=({{ DeviceNames }})
+                    VOLUME_IDS=({{ VolumeIds }})
+                    MOUNT_DIRECTORIES=({{ MountDirectories }})
+                    FILE_SYSTEM_TYPES=({{ FileSystemTypes }})
+                    if [[ ${#FILE_SYSTEM_TYPES[@]} -eq 0 ]]; then
+                      for i in "${!DEVICE_NAMES[@]}"; do
+                          FILE_SYSTEM_TYPES+=("xfs")
+                      done
+                    fi
+                    MOUNT_EXIT_CODE=0
+                    EVENTUALLY_MOUNTED_DEVICES=()
+                    EVENTUALLY_MOUNTED_DIRECTORIES=()
+                    OS_NAME=$(grep '^NAME' /etc/os-release | cut -d '=' -f2 | tr -d '"')
+                    OS_VERSION=$(grep '^VERSION_ID=' /etc/os-release | cut -d '=' -f2 | tr -d '"')
+                    check_provided_variables ${#DEVICE_NAMES[@]} ${#VOLUME_IDS[@]} ${#MOUNT_DIRECTORIES[@]} ${#FILE_SYSTEM_TYPES[@]}
+                    yes | cp /etc/fstab /etc/fstab.orig
+                    for i in "${!DEVICE_NAMES[@]}"; do
+                      FILE_SYSTEM_TYPE="${FILE_SYSTEM_TYPES[$i]}"
+                      ACTUAL_DEVICE_NAME=$(get_real_device_name "$OS_NAME" "${DEVICE_NAMES[$i]}" "${VOLUME_IDS[$i]}" "$OS_VERSION")
+                      if [[ ! -z "$ACTUAL_DEVICE_NAME" ]]; then
+                          if [[ $(lsblk -o NAME | grep ${ACTUAL_DEVICE_NAME#"/dev/"}) ]]; then
+                              MOUNT_DIRECTORY=${MOUNT_DIRECTORIES[$i]}
+                              FILE_SYSTEM=$(file -s "$ACTUAL_DEVICE_NAME" | cut -d ':' -f2- | xargs)
+                              if [[ "$FILE_SYSTEM" == "data" ]]; then
+                                  if [[ ! -x "$(command -v mkfs)" ]] || [[ -z "$(which mkfs.$FILE_SYSTEM_TYPE)" ]]; then
+                                      install_mkfs "$OS_NAME"
+                                  fi
+                                  mkfs -t "$FILE_SYSTEM_TYPE" "$ACTUAL_DEVICE_NAME"
+                              fi
+                              if [[ ! -d "$MOUNT_DIRECTORY" ]]; then
+                                  mkdir -p "$MOUNT_DIRECTORY"
+                              fi
+                              MOUNT_OPTIONS=$(get_mount_options "$OS_NAME")
+                              UUID=$(blkid -o export "$ACTUAL_DEVICE_NAME" | grep ^UUID=)
+                              delete_fstab_etries_for_device_and_mount_point "$ACTUAL_DEVICE_NAME" "$MOUNT_DIRECTORY"  "$UUID"
+                              echo "$(blkid -o export $ACTUAL_DEVICE_NAME | grep ^UUID=)  $MOUNT_DIRECTORY  "$FILE_SYSTEM_TYPE"  $MOUNT_OPTIONS  0  2" | tee -a /etc/fstab >/dev/null
+                              EVENTUALLY_MOUNTED_DEVICES+=("${DEVICE_NAMES[$i]}")
+                              EVENTUALLY_MOUNTED_DIRECTORIES+=("$MOUNT_DIRECTORY")
+                          else
+                              report_warning "Device ${DEVICE_NAMES[$i]} with volume id ${VOLUME_IDS[$i]} cannot be attached to the EC2 since it doesn't exist and will be skipped."
+                          fi
+                      else
+                          report_warning "Device ${DEVICE_NAMES[$i]} with volume id ${VOLUME_IDS[$i]} cannot be attached to the EC2 since it doesn't exist and will be skipped."
+                      fi
+                    done
+                    mount -a || MOUNT_EXIT_CODE=$?
+                    if [[ "$MOUNT_EXIT_CODE" != "0" ]]; then
+                      mv /etc/fstab.orig /etc/fstab
+                      throw_error "Specified EBS volumes cannot be mounted."
+                    else
+                      if [[ ${#EVENTUALLY_MOUNTED_DEVICES[@]} -gt 0 ]]; then
+                          report_info "EBS volumes ${EVENTUALLY_MOUNTED_DEVICES[*]} have been successfully mounted (if not already) to corresponging ${EVENTUALLY_MOUNTED_DIRECTORIES[*]} mount points."
+                      fi
+                    fi
+        Tags:
+          - Key: ComponentName
+            Value: 
+              Ref: AWS::StackName

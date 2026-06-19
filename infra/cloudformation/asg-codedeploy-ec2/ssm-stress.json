@@ -1,0 +1,18 @@
+{
+  "Targets": [
+    {
+      "Key": "tag:ProjectDeploymentName",
+      "Values": [
+        "aws-codepipeline-boot-asg-codedeploy-ec2"
+      ]
+    }
+  ],
+  "DocumentName": "AWS-RunShellScript",
+  "Comment": "runningAmazonEC2WorkloadsAtScale stress",
+  "Parameters": {
+    "commands": [
+      "sudo yum install -y stress-ng",
+      "stress-ng --matrix 0 -t 30m"
+    ]
+  }
+}

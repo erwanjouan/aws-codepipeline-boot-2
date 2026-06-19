@@ -1,0 +1,5 @@
+include ../CfnModule.mk
+
+MODULE_ID:=Atomicity::Vpc::Internet::MODULE
+DEFAULT_VERSION:=00000004
+TARGET_VERSION:=00000003

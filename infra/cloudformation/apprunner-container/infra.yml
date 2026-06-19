@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed on AppRunner Container
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  ApplicationPort:
+    Type: String
+    Default: 8080
+  ContainerImageRepositoryUrl:
+    Type: String
+
+Resources:
+
+  AppRunnerContainerEcrRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: build.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: allow-to-download-images-from-ecr
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  AppRunnerContainerExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: tasks.apprunner.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: allow-access-to-apprunner
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: apprunner:*
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  AppRunnerAutoScalingConfiguration:
+    Properties:
+      AutoScalingConfigurationName: !Ref DeploymentName
+      MaxConcurrency: 10
+      MaxSize: 4
+      MinSize: 1
+    Type: AWS::AppRunner::AutoScalingConfiguration
+
+  AppRunnerObservabilityConfiguration:
+    Properties:
+      ObservabilityConfigurationName: xray-tracing
+      TraceConfiguration:
+        Vendor: AWSXRAY
+    Type: AWS::AppRunner::ObservabilityConfiguration
+  
+  AppRunnerContainer:
+    Properties:
+      ServiceName: !Ref DeploymentName
+      SourceConfiguration:
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerContainerEcrRole.Arn
+        AutoDeploymentsEnabled: false
+        ImageRepository:
+          ImageConfiguration:
+            Port: !Ref ApplicationPort
+            RuntimeEnvironmentVariables:
+              - Name: SERVER_PORT
+                Value: !Ref ApplicationPort
+              - Name: SPRING_PROFILES_ACTIVE
+                Value: !Ref DeploymentName
+              - Name: PROJECT_DEPLOYMENT_NAME
+                Value: !Ref ProjectDeploymentName
+              - Name: AWS_DEFAULT_REGION
+                Value: !Ref AWS::Region
+          ImageIdentifier: !Sub ${ContainerImageRepositoryUrl}:${ProjectVersion}
+          ImageRepositoryType: ECR
+      AutoScalingConfigurationArn: !GetAtt AppRunnerAutoScalingConfiguration.AutoScalingConfigurationArn
+      ObservabilityConfiguration:
+        ObservabilityConfigurationArn: !GetAtt AppRunnerObservabilityConfiguration.ObservabilityConfigurationArn
+        ObservabilityEnabled: true
+      InstanceConfiguration:
+        Cpu: 1024
+        Memory: 4096
+        InstanceRoleArn: !GetAtt AppRunnerContainerExecutionRole.Arn
+      HealthCheckConfiguration:
+        HealthyThreshold: 2
+        Interval: 20
+        Path: /actuator/health
+        Protocol: HTTP
+    Type: AWS::AppRunner::Service
+
+
+Outputs:
+  WatchServiceEndpoint:
+    Value: !Sub
+      - "https://${ContainerUrl}/${DeploymentName}"
+      - ContainerUrl: !GetAtt 'AppRunnerContainer.ServiceUrl'

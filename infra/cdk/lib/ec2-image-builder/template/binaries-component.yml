@@ -1,0 +1,30 @@
+name: Al2023WithAgents
+description: Builds AMI based on AL2023 with base agents (CodeDeploy, CloudWatch)
+schemaVersion: 1.0
+phases:
+  - name: build
+    steps:
+      - name: InstallDependencies # Should contain no space
+        action: ExecuteBash
+        inputs:
+          commands:
+            - sudo su
+            - yum upgrade -y
+            - yum install -y java-17-amazon-corretto-headless
+            - yum update -y aws-cfn-bootstrap
+  - name: validate
+    steps:
+      - name: ValidateInstall  # Should contain no space
+        action: ExecuteBash
+        inputs:
+          commands:
+            - java --version
+            - cfn-init --help
+  - name: test
+    steps:
+      - name: TestInstall  # Should contain no space
+        action: ExecuteBash
+        inputs:
+          commands:
+            - java --version
+            - cfn-init --help

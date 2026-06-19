@@ -1,0 +1,372 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Base image with base agents
+Parameters:
+  ProjectName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  LatestAmiIdX86:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+  LatestAmiIdArm64:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64
+  Architecture:
+    Type: String
+    Default: x86
+    AllowedValues:
+      - arm64
+      - x86
+  CloudWatchConfigParameterStore:
+    Type: String
+    Default: /custom/cloudwatch-agent/config/linux
+  OrganizationId:
+    Type: String
+    Default: o-ft6vog2ini
+  OrganizationUnitId:
+    Type: String
+    Default: ou-tgo3-wu1c3i9p
+
+Mappings:
+  Architectures:
+    x86:
+      ParameterStoreName: /custom/ami/al2023/x86
+      InstanceType: t2.small
+    arm64:
+      ParameterStoreName: /custom/ami/al2023/arm64
+      InstanceType: t4g.small
+
+Conditions:
+  IsGraviton: !Equals
+    - !Ref Architecture
+    - arm64
+
+Resources:
+
+  ####################
+  # S3 Logs bucket
+  ####################
+
+  LogsBucket:
+    Type: AWS::S3::Bucket
+
+  ##########################
+  # EC2 Image Builder
+  ##########################
+
+  EC2ImageBuilderInfrastructureConfiguration:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      InstanceProfileName: !Ref EC2ImageBuilderInstanceProfile
+      InstanceTypes:
+        - !FindInMap [ Architectures, !Ref Architecture, InstanceType ]
+      Logging:
+        S3Logs:
+          S3BucketName: !Ref LogsBucket
+          S3KeyPrefix: 'ec2-image-builder/'
+    Type: AWS::ImageBuilder::InfrastructureConfiguration
+
+  EC2ImageBuilderInstanceProfile:
+    Properties:
+      Roles:
+        - !Ref EC2ImageBuilderRole
+    Type: AWS::IAM::InstanceProfile
+
+  EC2ImageBuilderRole:
+    Properties:
+      Description: Role applied on EC2 Image Builder
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+        - PolicyName: code-deploy-launch-template-policy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:CreateTags
+                  - iam:PassRole
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:PutRetentionPolicy
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeDeployFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AWSImageBuilderFullAccess
+      Path: /
+    Type: AWS::IAM::Role
+
+  EC2ImageBuilderComponent:
+    Properties:
+      Name: !Sub ${ProjectDeploymentName}-binaries
+      ChangeDescription: Installs base agents
+      # Phases can only be
+      # Build stage : build , validate
+      # Test stage : test
+      # https://docs.aws.amazon.com/imagebuilder/latest/userguide/what-is-image-builder.html
+      Data: |
+        name: Al2023WithAgents
+        description: Builds AMI based on AL2023 with base agents (CodeDeploy, CloudWatch)
+        schemaVersion: 1.0
+        phases:
+          - name: build
+            steps:
+              - name: InstallDependencies # Should contain no space
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo su
+                    - yum upgrade -y
+                    - yum install -y java-17-amazon-corretto-headless
+                    - yum update -y aws-cfn-bootstrap
+          - name: validate
+            steps:
+              - name: ValidateInstall  # Should contain no space
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - java --version
+                    - cfn-init --help
+          - name: test
+            steps:
+              - name: TestInstall  # Should contain no space
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - java --version
+                    - cfn-init --help
+      Description: Installs base agents
+      Platform: Linux
+      SupportedOsVersions: [ "Amazon Linux 2" ]
+      Version: '1.0.0'
+      Tags:
+        Name: !Ref ProjectDeploymentName
+    Type: AWS::ImageBuilder::Component
+
+  EC2ImageBuilderConfigurationComponent:
+    Properties:
+      Name: !Sub ${ProjectDeploymentName}-config
+      ChangeDescription: Installs configuration
+      Data: !Sub |
+        name: Al2023WithAgentsConfig
+        description: Builds AMI based on AL2023 with base agents (CodeDeploy, CloudWatch)
+        schemaVersion: 1.0
+        phases:
+          - name: build
+            steps:
+              - name: DownloadCloudWatchAgentConfigFromParameterStore
+                action: ExecuteBash
+                inputs:
+                  commands:
+                  - sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c ssm:${CloudWatchConfigParameterStore}
+          - name: validate
+            steps:
+              - name: ValidateConfig  # Should contain no space
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - cat /etc/systemd/system/amazon-cloudwatch-agent.service
+      Description: Installs base agents configuration
+      Platform: Linux
+      SupportedOsVersions: [ "Amazon Linux 2" ]
+      Version: '1.0.0'
+      Tags:
+        Name: !Ref ProjectDeploymentName
+    Type: AWS::ImageBuilder::Component
+
+  EC2ImageBuilderRecipe:
+    Properties:
+      Components:
+        # Java17, CloudWatch Helper Scripts
+        - ComponentArn: !GetAtt EC2ImageBuilderComponent.Arn
+        # CodeDeploy Agent
+        - ComponentArn: "arn:aws:imagebuilder:eu-west-1:aws:component/aws-codedeploy-agent-linux/1.0.3/1"
+        # CloudWatch Agent
+        - ComponentArn: "arn:aws:imagebuilder:eu-west-1:aws:component/amazon-cloudwatch-agent-linux/1.0.1/1"
+        # Cloudwatch Agent config
+        - ComponentArn: !GetAtt EC2ImageBuilderConfigurationComponent.Arn
+      Name: !Ref ProjectDeploymentName
+      ParentImage: !If
+        - IsGraviton
+        - !Ref  LatestAmiIdArm64
+        - !Ref LatestAmiIdX86
+      Version: '1.0.0'
+    DependsOn: EC2ImageLogGroup
+    Type: AWS::ImageBuilder::ImageRecipe
+
+  EC2ImageLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/imagebuilder/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  EC2ImageBuilderDistributionConfiguration:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      Distributions:
+        - Region: !Ref AWS::Region
+          AmiDistributionConfiguration:
+            Name: !Sub "${ProjectName}-${Architecture}-${AWS::Region}-{{ imagebuilder:buildDate }}"
+            AmiTags:
+              Name: !Ref ProjectDeploymentName
+              Architecture: !Ref Architecture
+              BaseOs: al2023
+            LaunchPermissionConfiguration:
+              OrganizationalUnitArns:
+                - !Sub arn:aws:organizations::${AWS::AccountId}:ou/${OrganizationId}/${OrganizationUnitId}
+            Description: Ami with agents and Java
+
+        - AmiDistributionConfiguration:
+            Name: !Sub "${ProjectName}-${Architecture}-eu-west-3-{{ imagebuilder:buildDate }}"
+            AmiTags:
+              Name: !Ref ProjectDeploymentName
+              Architecture: !Ref Architecture
+              BaseOs: al2023
+            LaunchPermissionConfiguration:
+              OrganizationalUnitArns:
+                - !Sub arn:aws:organizations::${AWS::AccountId}:ou/${OrganizationId}/${OrganizationUnitId}
+            Description: Ami with agents and Java
+          Region: eu-west-3
+      Tags:
+        Name: !Ref ProjectDeploymentName
+    Type: AWS::ImageBuilder::DistributionConfiguration
+
+  EC2ImageBuilderImagePipeline:
+    Properties:
+      Name: !Sub '${ProjectDeploymentName}-pipeline'
+      Description: Pipeline for EC2 Image Builder
+      DistributionConfigurationArn: !GetAtt EC2ImageBuilderDistributionConfiguration.Arn
+      ImageRecipeArn: !GetAtt EC2ImageBuilderRecipe.Arn
+      InfrastructureConfigurationArn: !GetAtt EC2ImageBuilderInfrastructureConfiguration.Arn
+      Status: ENABLED
+      Tags:
+        Name: !Ref ProjectDeploymentName
+    Type: AWS::ImageBuilder::ImagePipeline
+
+  EC2Image:
+    Properties:
+      ImageRecipeArn: !GetAtt EC2ImageBuilderRecipe.Arn
+      DistributionConfigurationArn: !GetAtt EC2ImageBuilderDistributionConfiguration.Arn
+      InfrastructureConfigurationArn: !GetAtt EC2ImageBuilderInfrastructureConfiguration.Arn
+      EnhancedImageMetadataEnabled: false
+    Type: AWS::ImageBuilder::Image
+
+  ##########################
+  # Update Parameter Store
+  ##########################
+
+  UpdateParameterStoreLambda:
+    Properties:
+      FunctionName: !Sub ${ProjectDeploymentName}-update-parameter-store
+      Handler: index.lambda_handler
+      Timeout: 60
+      Role: !GetAtt 'UpdateParameterStoreExecutionRole.Arn'
+      Runtime: python3.9
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import cfnresponse
+          import traceback
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+              responseData = {}
+              try:
+                logger.info('got event {}'.format(event))
+                if event['RequestType'] is not None and event['RequestType'] in ['Create','Update']:
+                    props = event['ResourceProperties']
+                    parameterStoreName = props['ParameterStoreName']
+                    logger.info('parameterStoreName {}'.format(parameterStoreName))
+                    amiId = props['AmiId']
+                    logger.info('amiId {}'.format(amiId))
+                    ssm = boto3.client('ssm')
+                    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ssm/client/put_parameter.html
+                    response = ssm.put_parameter(
+                      Name=parameterStoreName,
+                      Value=amiId,
+                      Type='String',
+                      Overwrite=True, 
+                      DataType='text',
+                    )
+                    logger.info('response {}'.format(response))
+                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, 'CustomResourcePhysicalID')
+              except Exception:
+                # Sending FAILED signal to CloudFormation
+                logger.info('Exception {}'.format(traceback.format_exc()))
+                cfnresponse.send(event, context, cfnresponse.FAILED, responseData, 'CustomResourcePhysicalID')
+    DependsOn: UpdateParamaterStoreLogGroup
+    Type: AWS::Lambda::Function
+
+  UpdateParamaterStoreLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectDeploymentName}-update-parameter-store
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  UpdateParameterStoreExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: lambda-parameter-store
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                  - ssm:DeleteParameter
+                  - ssm:GetParameterHistory
+                  - ssm:GetParameter
+                Resource: !Sub
+                  - "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${ParameterStoreName}"
+                  - ParameterStoreName: !FindInMap [ Architectures, !Ref Architecture, ParameterStoreName ]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  CustomResourceUpdateParameterStore:
+    Properties:
+      ServiceToken: !GetAtt UpdateParameterStoreLambda.Arn
+      AmiId: !GetAtt EC2Image.ImageId
+      ParameterStoreName: !FindInMap [ Architectures, !Ref Architecture, ParameterStoreName ]
+    Type: Custom::UpdateParameterStoreLambda
+
+  ##########
+  # Cleanup
+  ##########
+
+  Cleanup:
+    Properties:
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      ContainerImageRegistries: ''
+      BucketNames: !Ref LogsBucket
+    Type: Atomicity::Cleanup::Lambda::MODULE
+
+Outputs:
+  ImageArn:
+    Description: Reference to EC2 Image Builder Output Arn
+    Value: !GetAtt EC2Image.Arn
+  AmiId:
+    Description: Reference to EC2 Image Builder Output ImageId
+    Value: !GetAtt EC2Image.ImageId

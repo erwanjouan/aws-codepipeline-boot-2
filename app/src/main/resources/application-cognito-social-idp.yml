@@ -1,0 +1,27 @@
+# allows to use "X-Forwarded-Proto: https" header behind Load Balancer
+# to do redirections with https and not http
+# (ecs container receives http traffic only)
+server:
+  forward-headers-strategy: NATIVE
+#
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          cognito:
+            clientId: ${COGNITO_CLIENT_ID}
+            clientSecret: ${COGNITO_CLIENT_SECRET}
+            scope: openid
+            redirectUriTemplate: ${REDIRECT_URI}/login/oauth2/code/cognito
+            clientName: ${USER_POOL_CLIENT_NAME}
+        provider:
+          cognito:
+            issuerUri: https://cognito-idp.${REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}
+            userNameAttribute: username # or cognito:username
+
+logging:
+  level:
+    org:
+      springframework:
+        security: TRACE

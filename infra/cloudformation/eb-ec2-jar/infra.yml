@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application (jar) deployed with Elastic Beanstalk on EC2 instances
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  DeploymentName:
+    Type: String
+  ArtifactBucket:
+    Type: String
+  SourceKey:
+    Type: String
+    Default: output.zip
+  DeploymentPolicy:
+    Type: String
+    Default: Rolling
+    AllowedValues:
+      - AllAtOnce
+      - Rolling
+      - RollingWithAdditionalBatch
+      - Immutable
+      - TrafficSplitting
+  InstanceTypes:
+    Type: String
+    Default: t3.medium,t2.medium
+
+Resources:
+
+  EbApplication:
+    Properties:
+      ApplicationName: !Ref ProjectDeploymentName
+      Description: Spring boot and elastic beanstalk
+    Type: AWS::ElasticBeanstalk::Application
+
+  EbApplicationVersion:
+    Properties:
+      ApplicationName: !Ref EbApplication
+      SourceBundle:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Sub '${ProjectVersion}/${SourceKey}'
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+
+  EbConfigurationTemplate:
+    Properties:
+      ApplicationName: !Ref EbApplication
+      Description: A display of speed boot application
+      OptionSettings: # https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/command-options-general.html
+        - Namespace: aws:ec2:instances
+          OptionName: InstanceTypes
+          Value: !Ref InstanceTypes
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref EbInstanceProfile
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: SPRING_PROFILES_ACTIVE
+          Value: !Ref DeploymentName
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: PROJECT_DEPLOYMENT_NAME
+          Value: !Ref ProjectDeploymentName
+        # Choose a deployment policy for application version deployments. Default = AllAtOnce
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: DeploymentPolicy
+          Value: !Ref DeploymentPolicy
+        # The percentage or the fixed number of Amazon EC2 instances in the Auto Scaling group to simultaneously perform deployments on. Valid values vary depending on the BatchSizeType setting used.
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: BatchSize
+          Value: 50
+        # The type of number that's specified in BatchSize. Default = Percentage
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: BatchSizeType
+          Value: Percentage
+        # Don't cancel a deployment due to failed health checks.
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: IgnoreHealthCheck
+          Value: False
+        # The amount of time, in seconds, to wait for an instance to complete executing commands. Default = 600
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: Timeout
+          Value: 600
+        # The initial percentage of incoming client traffic that Elastic Beanstalk shifts to environment instances running the new application version you're deploying. (1 to 100)
+        - Namespace: aws:elasticbeanstalk:trafficsplitting
+          OptionName: NewVersionPercent
+          Value: 25
+        # The time period, in minutes, that Elastic Beanstalk waits after an initial healthy deployment before proceeding to shift all incoming client traffic to the new application version that you're deploying.(3 to 600)
+        - Namespace: aws:elasticbeanstalk:trafficsplitting
+          OptionName: EvaluationTime
+          Value: 3
+        # Need to make sure environment has applicative load balancer activated unless error is thrown for traffic splitting
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: application
+      SolutionStackName: "64bit Amazon Linux 2023 v4.0.1 running Corretto 17"
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+
+  EnvironmentId:
+    Properties:
+      ApplicationName: !Ref EbApplication
+      EnvironmentName: !Ref ProjectDeploymentName
+      TemplateName: !Ref EbConfigurationTemplate
+      VersionLabel: !Ref EbApplicationVersion # Default: If not specified, Elastic Beanstalk attempts to deploy the sample application.
+      OptionSettings: # Need to set Load Balancer type unless pipeline will set it back to Classic and generate error
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: application
+    Type: AWS::ElasticBeanstalk::Environment
+
+  EbEc2Role:
+    Properties:
+      Description: Role applied on EC2. Provides full access to CodeDeploy resources.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkReadOnly
+      Path: /
+    Type: AWS::IAM::Role
+
+  EbInstanceProfile:
+    Properties:
+      InstanceProfileName: !Sub '${ProjectDeploymentName}-eb-instance-profile'
+      Path: /
+      Roles:
+        - !Ref EbEc2Role # only one role allowed for EC2, so AmazonSSMManagedInstanceCore was attached to it manually
+    Type: AWS::IAM::InstanceProfile
+
+Outputs:
+  WatchServiceEndpoint:
+    Value: !Sub
+      - http://${EndpointURL}/${DeploymentName}
+      - EndpointURL: !GetAtt EnvironmentId.EndpointURL

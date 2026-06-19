@@ -1,0 +1,93 @@
+---
+- name: "Ensuring CodeDeploy, CloudWatch, SSM agents are installed on EC2"
+  hosts: default
+  become: true
+
+  tasks:
+
+    - name: "Install pre-requisites | yum install"
+      ansible.builtin.yum:
+        name: ruby
+        state: present
+
+    - name: "java-17-amazon-corretto-headless Install | amazon-linux-extras install"
+      command: "yum install -y java-17-amazon-corretto-headless"
+
+    - name: "Get CodeDeploy | s3"
+      get_url:
+        url: "https://aws-codedeploy-eu-west-1.s3.amazonaws.com/latest/install"
+        dest: /tmp/codedeploy-install
+
+    - name: "Codedeploy Install Binary | permission executable"
+      file:
+        state: file
+        path: /tmp/codedeploy-install
+        group: root
+        owner: root
+        mode: 0755
+
+    - name: "Codedeploy Install | installer execution"
+      command: /tmp/codedeploy-install auto
+
+    - name: "Get CodeDeploy Service Status | dump service status"
+      ansible.builtin.systemd:
+        name: "codedeploy-agent"
+      register: codedeploy_agent_status
+
+    - debug:
+        var: codedeploy_agent_status.status.ActiveState
+
+    - name: "Get CodeDeploy Service Status | dump service status"
+      ansible.builtin.systemd:
+        name: codedeploy-agent
+        state: started
+        enabled: true
+      register: codedeploy_agent_status
+
+    - debug:
+        var: codedeploy_agent_status.status.ActiveState
+
+    - name: "Install the amazon-cloudwatch-agent rpm from a remote repo | yum install"
+      ansible.builtin.yum:
+        name: https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+        state: present
+
+    - name: "Generate CloudWatch Agent configuration | config copy"
+      ansible.builtin.copy:
+        dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+        mode: 0600
+        src: config/amazon-cloudwatch-agent.json
+
+    - name: "Start CloudWatch Agent | shell execution"
+      ansible.builtin.shell: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+
+    - name: "Stop CloudWatch Agent | shell execution"
+      ansible.builtin.shell: /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a stop
+
+    - name: "Enable CloudWatch Service Status | systemd enable"
+      ansible.builtin.systemd:
+        name: "amazon-cloudwatch-agent"
+        state: started
+        enabled: true
+
+    - name: "Get CloudWatch Service Status | dump service status"
+      ansible.builtin.systemd:
+        name: "amazon-cloudwatch-agent"
+      register: amazon_cloudwatch_agent_status
+
+    - debug:
+        var: amazon_cloudwatch_agent_status.status.ActiveState
+
+    - name: "Enable SSM Agent | systemd enable"
+      ansible.builtin.systemd:
+        name: "amazon-ssm-agent"
+        state: started
+        enabled: true
+
+    - name: "Get SSM Service Status | dump service status"
+      ansible.builtin.systemd:
+        name: "amazon-ssm-agent"
+      register: ssm_agent_status
+
+    - debug:
+        var: ssm_agent_status.status.ActiveState

@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation module to Cleanup buckets, ECR registries
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  ContainerImageRegistries:
+    Type: CommaDelimitedList
+    Description: List of container image registries to delete
+  BucketNames:
+    Type: CommaDelimitedList
+    Description: List of bucket names to delete
+
+Resources:
+
+  ##########
+  # Cleanup
+  ##########
+
+  Lambda:
+    Properties:
+      FunctionName: !Sub ${ProjectDeploymentName}-cleanup # should match log-group suffix
+      Handler: index.lambda_handler
+      Timeout: 60
+      Role: !GetAtt 'LambdaExecutionRole.Arn'
+      Runtime: python3.9
+      Environment:
+        Variables:
+          CONTAINER_IMAGE_REGISTRIES: !Ref ContainerImageRegistries
+          BUCKET_NAMES: !Ref BucketNames
+      Code:
+        ZipFile: |
+          import logging
+          import string
+          import boto3
+          import cfnresponse
+          import traceback
+          import os
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def clear_registries():
+            env_var = os.getenv('CONTAINER_IMAGE_REGISTRIES')
+            if env_var is not None and len(env_var) > 0:
+              ecr = boto3.client('ecr')
+              containerImageRegistries = [x.strip() for x in env_var.split(',')]
+              for containerImageRegistry in containerImageRegistries:
+                image_ids = ecr.list_images(repositoryName=containerImageRegistry)['imageIds']
+                if len(image_ids) > 0:
+                  response = ecr.batch_delete_image(repositoryName=containerImageRegistry, imageIds=image_ids)
+                  logger.info('{}'.format(response))
+            else:
+              logger.info('CONTAINER_IMAGE_REGISTRIES env var is empty')
+
+          def clear_buckets():
+            env_var = os.getenv('BUCKET_NAMES')
+            if env_var is not None and len(env_var) > 0:
+              s3 = boto3.resource('s3')
+              bucketNames = [x.strip() for x in env_var.split(',')]
+              for bucketName in bucketNames:
+                bucket = s3.Bucket(bucketName)
+                bucket.objects.all().delete()
+            else:
+              logger.info('BUCKET_NAMES env var is empty')
+
+          def lambda_handler(event, context):
+            try:
+              logger.info('got event {}'.format(event))
+              responseData = {}
+              if event['RequestType'] is not None and event['RequestType'] in ['Delete']:
+                clear_registries()
+                clear_buckets()
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, 'CustomResourcePhysicalID')
+            except Exception:
+              # Sending FAILED signal to CloudFormation
+              logger.info('Exception {}'.format(traceback.format_exc()))
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, 'CustomResourcePhysicalID')
+    DependsOn: LambdaLogGroup
+    Type: AWS::Lambda::Function
+
+  LambdaLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectDeploymentName}-cleanup
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  LambdaExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: lambda-s3-full-access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: s3:* # should more least priviledged
+                Resource: '*'
+        - PolicyName: lambda-ecr-full-access
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: ecr:* # should more least priviledged
+                Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  CustomResourceCleanup:
+    Properties:
+      ServiceToken: !GetAtt 'Lambda.Arn'
+    Type: Custom::Lambda

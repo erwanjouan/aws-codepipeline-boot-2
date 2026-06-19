@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CloudFormation module to Cleanup buckets, ECR registries
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+
+Resources:
+
+  ProjectEventsLambdaRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - lambda.amazonaws.com
+          Action:
+            - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: AsgEventsLambdaPolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:PutLogEvents
+                Resource: !GetAtt ProjectEventsCloudWatchLogGroup.Arn
+    Type: AWS::IAM::Role
+
+  ProjectEventsCloudWatchLogGroup:
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProjectDeploymentName}-events
+      RetentionInDays: 7
+    Type: AWS::Logs::LogGroup
+
+  ProjectEventsCloudWatchLogStream:
+    Properties:
+      LogGroupName: !Ref ProjectEventsCloudWatchLogGroup
+      LogStreamName: events-stream
+    Type: AWS::Logs::LogStream
+
+  ProjectEventsLambda:
+    Properties:
+      Code:
+        ZipFile: !Sub |
+          import boto3
+          import time
+          import os
+          import json
+          
+          logs = boto3.client('logs')
+          timestamp = int(round(time.time() * 1000))
+          
+          def lambda_handler(event, context):
+            response = logs.put_log_events(
+              logGroupName=os.getenv('LOG_GROUP'),
+              logStreamName=os.getenv('LOG_STREAM'),
+              logEvents=[
+                {
+                  'timestamp': timestamp,
+                  'message': json.dumps(event)
+                }
+              ]
+            )    
+            return {
+              'statusCode': 200,
+              'body': 'OK'
+            }
+      Environment:
+        Variables:
+          LOG_GROUP: !Ref ProjectEventsCloudWatchLogGroup
+          LOG_STREAM: !Ref ProjectEventsCloudWatchLogStream
+      FunctionName: !Sub ${ProjectDeploymentName}-events
+      Handler: index.lambda_handler
+      MemorySize: 128
+      Role: !GetAtt ProjectEventsLambdaRole.Arn
+      Runtime: python3.9
+      Timeout: 30
+    DependsOn: ProjectEventsCloudWatchLogGroup
+    Type: AWS::Lambda::Function
+
+  ProjectEventsLambdaPermission:
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt ProjectEventsLambda.Arn
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ProjectEventsRule.Arn
+    Type: AWS::Lambda::Permission
+
+  ProjectEventsRule:
+    Properties:
+      EventPattern:
+        source:
+          - aws.autoscaling
+          - aws.codepipeline
+      Targets:
+        - Arn: !GetAtt ProjectEventsLambda.Arn
+          Id: AsgEventsLambda
+    Type: AWS::Events::Rule
+

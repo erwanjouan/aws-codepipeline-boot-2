@@ -1,0 +1,183 @@
+{
+    "typeName": "Atomicity::Vpc::Endpoints::MODULE",
+    "description": "Schema for Module Fragment of type Atomicity::Vpc::Endpoints::MODULE",
+    "properties": {
+        "Parameters": {
+            "type": "object",
+            "properties": {
+                "VPC": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "Type"
+                    ]
+                },
+                "PrivateSubnet1": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "Type"
+                    ]
+                },
+                "PrivateSubnet2": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "Type"
+                    ]
+                }
+            }
+        },
+        "Resources": {
+            "properties": {
+                "VPCEndpointSecurityGroup": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::SecurityGroup"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "EcrPrivateVPCEndpoint1": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "EcrPrivateVPCEndpoint2": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "EcsAgentEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "EcsTelemetryEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "EcsEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "LogsVPCEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "CloudFormationEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "SsmEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "Ec2MessagesEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                },
+                "SSmMessagesEndpoint": {
+                    "type": "object",
+                    "properties": {
+                        "Type": {
+                            "type": "string",
+                            "const": "AWS::EC2::VPCEndpoint"
+                        },
+                        "Properties": {
+                            "type": "object"
+                        }
+                    }
+                }
+            },
+            "type": "object",
+            "additionalProperties": false
+        }
+    },
+    "additionalProperties": true
+}

@@ -1,0 +1,22 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - aws --version && docker --version && java --version && mvn --version
+  build:
+    commands:
+      - mvn package
+  post_build:
+    commands:
+      - chmod +x ${DEPLOYMENT_NAME}/docker_build_push.sh
+      - ./${DEPLOYMENT_NAME}/docker_build_push.sh ${AWS_PRIMARY_REGION}
+      - ./${DEPLOYMENT_NAME}/docker_build_push.sh ${AWS_SECONDAY_REGION}
+
+artifacts:
+  files:
+    - ${DEPLOYMENT_NAME}/infra.yml
+  discard-paths: yes
+
+cache:
+  paths:
+    - /root/.m2/**/*

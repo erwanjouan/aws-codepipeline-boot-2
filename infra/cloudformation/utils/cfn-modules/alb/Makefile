@@ -1,0 +1,6 @@
+include ../CfnModule.mk
+
+MODULE_ID:=Atomicity::Alb::Resources::MODULE
+DEFAULT_VERSION:=00000011
+TARGET_VERSION:=00000003
+AWS_CLI_PROFILE:=default

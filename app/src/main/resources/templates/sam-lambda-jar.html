@@ -1,0 +1,59 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
+<head>
+
+    <meta http-equiv="refresh" content="3">
+
+    <title>Blue Green App</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+
+    <!-- needs to integrate Api Gateway stage name (Prod) in path to js/css -->
+
+    <!-- bootstrap -->
+    <link rel="stylesheet" th:href="@{/Prod/webjars/bootstrap/5.3.0/css/bootstrap.min.css}"/>
+    <script th:src="@{/Prod/webjars/bootstrap/5.3.0/js/bootstrap.min.js}"></script>
+
+    <!-- jquery -->
+    <script th:src="@{/Prod/webjars/jquery/3.4.1/jquery.min.js}"></script>
+
+    <!-- jquery datatable-->
+    <link rel="stylesheet" th:href="@{/Prod/webjars/datatables/1.10.19/css/jquery.dataTables.min.css}"/>
+    <script th:src="@{/Prod/webjars/datatables/1.10.19/js/jquery.dataTables.min.js}"></script>
+
+</head>
+
+<body>
+
+<div class="container-fluid p-5 text-center">
+    <h4>Lambda functions</h4>
+    <h6>Deployed with SAM</h6>
+</div>
+
+<div class="container ml-1">
+    <!-- From instance-->
+    <div class="mt-2">
+        <h5>From Function</h5>
+        <span>
+            [[${apiGwLambdaControlDto.context.getFunctionName}]]:
+            [[${apiGwLambdaControlDto.context.getFunctionVersion}]]
+        </span>
+    </div>
+
+    <!-- Deployed functions-->
+    <div class="mt-5">
+        <table id=" sample" class="table table-bordered table-hover table-striped">
+            <thead>
+            <tr class="headings">
+                <th th:each="header: ${apiGwLambdaControlDto.controlTable.headers}" class="column-title"
+                    th:text="${header}" th:style="|background: ${color}|"/>
+            </tr>
+            </thead>
+            <tbody>
+            <tr class="even pointer" th:each="row: ${apiGwLambdaControlDto.controlTable.rows}" id="tablerow">
+                <td th:each="header: ${apiGwLambdaControlDto.controlTable.headers}" th:text="${row.get(header)}"/>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

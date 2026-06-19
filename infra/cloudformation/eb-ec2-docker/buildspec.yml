@@ -1,0 +1,34 @@
+version: 0.2
+phases:
+  install:
+    commands:
+      - echo Nothing to do in the install phase...
+  pre_build:
+    commands:
+      - aws --version && docker --version && java --version && mvn --version
+      - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+  build:
+    commands:
+      - mvn package
+  post_build:
+    commands:
+      # push docker image to ECR
+      - docker build -f ${DEPLOYMENT_NAME}/Dockerfile -t ${CONTAINER_IMAGE_REPOSITORY} .
+      - docker tag ${CONTAINER_IMAGE_REPOSITORY}:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${CONTAINER_IMAGE_REPOSITORY}:latest
+      - docker tag ${CONTAINER_IMAGE_REPOSITORY}:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${CONTAINER_IMAGE_REPOSITORY}:${CODEBUILD_RESOLVED_SOURCE_VERSION}
+      - docker push --all-tags ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${CONTAINER_IMAGE_REPOSITORY}
+      # prepare application version
+      - mkdir output
+      - cp -r ${DEPLOYMENT_NAME}/eb/. output/
+      - envsubst < ${DEPLOYMENT_NAME}/${DOCKER_PLATFORM_CONFIGURATION} > output/Dockerrun.aws.json
+      - cd output/ && zip -r ../output.zip . && cd ..
+      # copy application version to S3
+      - aws s3 cp output.zip s3://${ARTIFACT_BUCKET}/${CODEBUILD_RESOLVED_SOURCE_VERSION}/output.zip
+artifacts:
+  files:
+    - ${DEPLOYMENT_NAME}/infra.yml
+  discard-paths: yes
+
+cache:
+  paths:
+    - /root/.m2/**/*

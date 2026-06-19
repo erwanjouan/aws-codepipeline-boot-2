@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CICD For a Java SpringBoot application deployed with ECS Fargate behind ALB secured by WebIdp
+Parameters:
+  ProjectName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectDeploymentName:
+    Type: String
+  BranchName:
+    Type: String
+    Default: main
+  WorkloadAccountId:
+    Type: String
+  CrossAccountRoleArn:
+    Type: String
+    Description: ARN of the IAM role that can be assumed by CodePipeline in target account
+  CloudFormationRoleArn:
+    Type: String
+    Description: ARN of IAM role that can be assumed by CloudFormation in target account
+    
+Resources:
+  Container:
+    Properties:
+      ProjectName: !Ref ProjectName
+      DeploymentName: !Ref DeploymentName
+      ProjectDeploymentName: !Ref ProjectDeploymentName
+      BranchName: !Ref BranchName
+      WorkloadAccountId: !Ref WorkloadAccountId
+      CrossAccountRoleArn: !Ref CrossAccountRoleArn
+      CloudFormationRoleArn: !Ref CloudFormationRoleArn
+    Type: Atomicity::CiCd::Container::MODULE

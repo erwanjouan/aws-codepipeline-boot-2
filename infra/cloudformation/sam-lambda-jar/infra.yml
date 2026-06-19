@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  sam-lambda-jar
+
+  Sample SAM Template for sam-lambda-jar
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 20
+    MemorySize: 4096
+    Tracing: Active
+  Api:
+    TracingEnabled: true
+
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  SpringProfilesActive:
+    Type: String
+  ArtifactName:
+    Type: String
+  ArtifactBucket:
+    Type: String
+
+Resources:
+
+  LambdaFunction:
+    Properties:
+      FunctionName: !Ref ProjectDeploymentName
+      CodeUri:
+        Bucket: !Ref ArtifactBucket
+        Key: !Sub "${ProjectVersion}/${ArtifactName}"
+      Handler: bluegreen.StreamLambdaHandler::handleRequest
+      Runtime: java17
+      Policies:
+        - arn:aws:iam::aws:policy/AWSLambda_ReadOnlyAccess
+      Architectures:
+        - x86_64
+      MemorySize: 4096
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          SPRING_PROFILES_ACTIVE: !Ref SpringProfilesActive
+          PROJECT_DEPLOYMENT_NAME: !Ref ProjectDeploymentName
+      Events: # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+        GitCommitApi:
+          Type: Api
+          Properties:
+            Path: "/api"
+            Method: get
+        ServiceApi:
+          Type: Api
+          Properties:
+            Path: "/sam-lambda-jar"
+            Method: get
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+
+  ApplicationResourceGroup:
+    Properties:
+      Name:
+        Fn::Sub: ApplicationInsights-SAM-${AWS::StackName}
+      ResourceQuery:
+        Type: CLOUDFORMATION_STACK_1_0
+    Type: AWS::ResourceGroups::Group
+
+  ApplicationInsightsMonitoring:
+    Properties:
+      ResourceGroupName:
+        Ref: ApplicationResourceGroup
+      AutoConfigurationEnabled: 'true'
+    Type: AWS::ApplicationInsights::Application
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  WatchServiceEndpoint:
+    Description: API Gateway endpoint URL for Prod stage for Lambda function
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/sam-lambda-jar"
+  LambdaFunction:
+    Description: Hello World Lambda Function ARN
+    Value: !GetAtt LambdaFunction.Arn
+  LambdaFunctionIamRole:
+    Description: Implicit IAM Role created for Hello World function
+    Value: !GetAtt LambdaFunctionRole.Arn

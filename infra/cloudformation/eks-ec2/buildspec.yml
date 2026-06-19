@@ -1,0 +1,23 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - aws --version && docker --version && java --version && mvn --version && python --version
+      - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+  build:
+    commands:
+      - mvn package
+  post_build:
+    commands:
+      # Spring boot app
+      - docker build -f ${DEPLOYMENT_NAME}/Dockerfile -t ${PROJECT_DEPLOYMENT_NAME} .
+      - docker tag ${PROJECT_DEPLOYMENT_NAME}:latest ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${PROJECT_DEPLOYMENT_NAME}:${CODEBUILD_RESOLVED_SOURCE_VERSION}
+      - docker push --all-tags ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${PROJECT_DEPLOYMENT_NAME}
+artifacts:
+  files:
+    - ${DEPLOYMENT_NAME}/infra.yml
+  discard-paths: yes
+
+cache:
+  paths:
+    - /root/.m2/**/*

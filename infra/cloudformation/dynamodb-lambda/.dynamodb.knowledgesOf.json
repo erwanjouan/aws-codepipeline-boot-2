@@ -1,0 +1,58 @@
+{"Item":{"Id":{"S": "1.1.K.1"},"Name":{"S": "Software development lifecycle (SDLC), concepts, phases and models"},"Parent":{"S": "1.1"}}}
+{"Item":{"Id":{"S": "1.1.K.2"},"Name":{"S": "Pipeline deployment patterns for single and multi-account environments"},"Parent":{"S": "1.1"}}}
+{"Item":{"Id":{"S": "1.2.K.1"},"Name":{"S": "Different types of tests (for example, unit tests, integration tests, acceptance tests, user interface tests, security scans)"},"Parent":{"S": "1.2"}}}
+{"Item":{"Id":{"S": "1.2.K.2"},"Name":{"S": "Reasonable use of different types of tests at different stages of the CI/CD pipeline"},"Parent":{"S": "1.2"}}}
+{"Item":{"Id":{"S": "1.3.K.1"},"Name":{"S": "Artifact use cases and secure management"},"Parent":{"S": "1.3"}}}
+{"Item":{"Id":{"S": "1.3.K.2"},"Name":{"S": "Methods to create and generate artifacts"},"Parent":{"S": "1.3"}}}
+{"Item":{"Id":{"S": "1.3.K.3"},"Name":{"S": "Artifact lifecycle considerations"},"Parent":{"S": "1.3"}}}
+{"Item":{"Id":{"S": "1.4.K.1"},"Name":{"S": "Deployment methodologies for various platforms (for example, Amazon EC2, Amazon Elastic Container Service [Amazon ECS], Amazon Elastic Kubernetes Service [Amazon EKS], Lambda)"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "1.4.K.2"},"Name":{"S": "Application storage patterns (for example, Amazon Elastic File System [Amazon EFS], Amazon S3, Amazon Elastic Block Store [Amazon EBS])"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "1.4.K.3"},"Name":{"S": "Mutable deployment patterns in contrast to immutable deployment patterns"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "1.4.K.4"},"Name":{"S": "Tools and services available for distributing code (for example, CodeDeploy, EC2 Image Builder)"},"Parent":{"S": "1.4"}}}
+{"Item":{"Id":{"S": "2.1.K.1"},"Name":{"S": "Infrastructure as code (IaC) options and tools for AWS"},"Parent":{"S": "2.1"}}}
+{"Item":{"Id":{"S": "2.1.K.2"},"Name":{"S": "Change management processes for IaC-based platforms"},"Parent":{"S": "2.1"}}}
+{"Item":{"Id":{"S": "2.1.K.3"},"Name":{"S": "Configurations management services and strategies"},"Parent":{"S": "2.1"}}}
+{"Item":{"Id":{"S": "2.2.K.1"},"Name":{"S": "AWS account structures, best practices, and related AWS services"},"Parent":{"S": "2.2"}}}
+{"Item":{"Id":{"S": "2.3.K.1"},"Name":{"S": "AWS services and solutions to automate tasks and processes"},"Parent":{"S": "2.3"}}}
+{"Item":{"Id":{"S": "2.3.K.2"},"Name":{"S": "Methods and strategies to interact with the AWS software-defined infrastructure"},"Parent":{"S": "2.3"}}}
+{"Item":{"Id":{"S": "3.1.K.1"},"Name":{"S": "Multi-AZ and multi-Region deployments (for example, compute layer, data layer)"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.1.K.2"},"Name":{"S": "SLAs"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.1.K.3"},"Name":{"S": "Replication and failover methods for stateful services"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.1.K.4"},"Name":{"S": "Techniques to achieve high availability (for example, Multi-AZ, multi-Region)"},"Parent":{"S": "3.1"}}}
+{"Item":{"Id":{"S": "3.2.K.1"},"Name":{"S": "Appropriate metrics for scaling services"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.2.K.2"},"Name":{"S": "Loosely coupled and distributed architectures"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.2.K.3"},"Name":{"S": "Serverless architectures"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.2.K.4"},"Name":{"S": "Container platforms"},"Parent":{"S": "3.2"}}}
+{"Item":{"Id":{"S": "3.3.K.1"},"Name":{"S": "Disaster recovery concepts (for example, RTO, RPO)"},"Parent":{"S": "3.3"}}}
+{"Item":{"Id":{"S": "3.3.K.2"},"Name":{"S": "Backup and recovery strategies (for example, pilot light, warm standby)"},"Parent":{"S": "3.3"}}}
+{"Item":{"Id":{"S": "3.3.K.3"},"Name":{"S": "Recovery procedures"},"Parent":{"S": "3.3"}}}
+{"Item":{"Id":{"S": "4.1.K.1"},"Name":{"S": "How to monitor applications and infrastructure"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.K.2"},"Name":{"S": "Amazon CloudWatch metrics (for example, namespaces, metrics, dimensions, and resolution)"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.K.3"},"Name":{"S": "Real-time log ingestion"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.K.4"},"Name":{"S": "Encryption options for at-rest and in-transit logs and metrics (for example, client-side and server-side, AWS Key Management Service [AWS KMS])"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.1.K.5"},"Name":{"S": "Security configurations (for example, IAM roles and permissions to allow for log collection)"},"Parent":{"S": "4.1"}}}
+{"Item":{"Id":{"S": "4.2.K.1"},"Name":{"S": "Anomaly detection alarms (for example, CloudWatch anomaly detection)"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.K.2"},"Name":{"S": "Common CloudWatch metrics and logs (for example, CPU utilization with Amazon EC2, queue length with Amazon RDS, 5xx errors with an Application Load Balancer)"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.K.3"},"Name":{"S": "Amazon Inspector and common assessment templates"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.K.4"},"Name":{"S": "AWS Config rules"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.2.K.5"},"Name":{"S": "AWS CloudTrail log events"},"Parent":{"S": "4.2"}}}
+{"Item":{"Id":{"S": "4.3.K.1"},"Name":{"S": "Event-driven, asynchronous design patterns (for example, S3 Event Notifications or Amazon EventBridge events to Amazon Simple Notification Service [Amazon SNS] or Lambda)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.K.2"},"Name":{"S": "Capabilities of auto scaling a variety of AWS services (for example, EC2 Auto Scaling groups, RDS storage auto scaling, DynamoDB, ECS capacity provider, EKS autoscalers)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.K.3"},"Name":{"S": "Alert notification and action capabilities (for example, CloudWatch alarms to Amazon SNS, Lambda, EC2 automatic recovery)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "4.3.K.4"},"Name":{"S": "Health check capabilities in AWS services (for example, Application Load Balancer target groups, Route 53)"},"Parent":{"S": "4.3"}}}
+{"Item":{"Id":{"S": "5.1.K.1"},"Name":{"S": "AWS services that generate, capture, and process events (for example, AWS Health, EventBridge, CloudTrail, CloudWatch Events)"},"Parent":{"S": "5.1"}}}
+{"Item":{"Id":{"S": "5.1.K.2"},"Name":{"S": "Event-driven architectures (for example, fan out, event streaming, queuing)"},"Parent":{"S": "5.1"}}}
+{"Item":{"Id":{"S": "5.2.K.1"},"Name":{"S": "Fleet management services (for example, Systems Manager, AWS Auto Scaling)"},"Parent":{"S": "5.2"}}}
+{"Item":{"Id":{"S": "5.2.K.2"},"Name":{"S": "Configuration management services (for example, AWS Config)"},"Parent":{"S": "5.2"}}}
+{"Item":{"Id":{"S": "5.3.K.1"},"Name":{"S": "AWS metrics and logging services (for example, CloudWatch, X-Ray)"},"Parent":{"S": "5.3"}}}
+{"Item":{"Id":{"S": "5.3.K.2"},"Name":{"S": "AWS service health services (for example, AWS Health, CloudWatch, Systems Manager OpsCenter)"},"Parent":{"S": "5.3"}}}
+{"Item":{"Id":{"S": "5.3.K.3"},"Name":{"S": "Root cause analysis"},"Parent":{"S": "5.3"}}}
+{"Item":{"Id":{"S": "6.1.K.1"},"Name":{"S": "Appropriate usage of different IAM entities for human and machine access (for example, users, groups, roles, identity providers, identity-based policies, resource-based policies, session policies)"},"Parent":{"S": "6.1"}}}
+{"Item":{"Id":{"S": "6.1.K.2"},"Name":{"S": "Identity federation techniques (for example, using IAM identity providers and AWS Single Sign-On)"},"Parent":{"S": "6.1"}}}
+{"Item":{"Id":{"S": "6.1.K.3"},"Name":{"S": "Permission management delegation by using IAM permissions boundaries"},"Parent":{"S": "6.1"}}}
+{"Item":{"Id":{"S": "6.2.K.1"},"Name":{"S": "Network security components (for example, security groups, network ACLs, routing, AWS Network Firewall, AWS WAF, AWS Shield)"},"Parent":{"S": "6.2"}}}
+{"Item":{"Id":{"S": "6.2.K.2"},"Name":{"S": "Certificates and public key infrastructure (PKI)"},"Parent":{"S": "6.2"}}}
+{"Item":{"Id":{"S": "6.2.K.3"},"Name":{"S": "Data management (for example, data classification, encryption, key management, access controls)"},"Parent":{"S": "6.2"}}}
+{"Item":{"Id":{"S": "6.3.K.1"},"Name":{"S": "Security auditing services and features (for example, CloudTrail, AWS Config, VPC Flow Logs, CloudFormation drift detection)"},"Parent":{"S": "6.3"}}}
+{"Item":{"Id":{"S": "6.3.K.2"},"Name":{"S": "AWS services for identifying security vulnerabilities and events (for example, GuardDuty, Amazon Inspector, IAM Access Analyzer, AWS Config)"},"Parent":{"S": "6.3"}}}
+{"Item":{"Id":{"S": "6.3.K.3"},"Name":{"S": "Common cloud security threats (for example, insecure web traffic, exposed AWS access keys, S3 buckets with public access enabled or encryption disabled)"},"Parent":{"S": "6.3"}}}

@@ -1,0 +1,304 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EKS cluster
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  DeploymentName:
+    Type: String
+  AwsLoadBalancerControllerServiceAccount:
+    Type: String
+    Description: AwsLoadBalancerController Service Account Name
+    Default: aws-load-balancer-controller
+  AwsLoadBalancerControllerRoleName:
+    Type: String
+    Description: AwsLoadBalancerController Role Name
+    Default: AmazonEKSLoadBalancerControllerRole
+  NumberOfReplicas:
+    Type: Number
+    Description: Number of container replicas
+    Default: 3
+  ArtifactBucket:
+    Type: String
+    Description: Artifact Bucket Name
+  EcrLambdaRegistry:
+    Type: String
+  EnvironmentName:
+    Type: String
+    Default: DefaultEKSBlueprint
+    Description: Name of EKS blueprint
+  NodeImageIdSSMParam:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/eks/optimized-ami/1.22/amazon-linux-2/recommended/image_id
+    Description: AWS Systems Manager Parameter Store parameter of the AMI ID for the
+      worker node instances. Change this value to match the version of
+      Kubernetes you are using.
+
+Mappings:
+  ServicePrincipalPartitionMap:
+    aws:
+      EC2: ec2.amazonaws.com
+      EKS: eks.amazonaws.com
+      EKSFargatePods: eks-fargate-pods.amazonaws.com
+    aws-cn:
+      EC2: ec2.amazonaws.com.cn
+      EKS: eks.amazonaws.com
+      EKSFargatePods: eks-fargate-pods.amazonaws.com
+    aws-us-gov:
+      EC2: ec2.amazonaws.com
+      EKS: eks.amazonaws.com
+      EKSFargatePods: eks-fargate-pods.amazonaws.com
+
+Resources:
+
+  spotBlueprintsEksClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - eks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSServicePolicy
+
+  spotBlueprintsNodeInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value:
+            Ref: EnvironmentName
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value:
+            Ref: EnvironmentName
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: InternetGateway
+      VpcId:
+        Ref: VPC
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${EnvironmentName} Public Routes
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+  ControlPlaneSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Cluster communication
+      VpcId:
+        Ref: VPC
+  ControlPlaneSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Ref: ControlPlaneSecurityGroup
+      SourceSecurityGroupId:
+        Ref: ControlPlaneSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+
+  AWSEKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      Version: "1.29"
+      RoleArn:
+        Fn::GetAtt:
+          - spotBlueprintsEksClusterRole
+          - Arn
+      ResourcesVpcConfig:
+        SecurityGroupIds:
+          - Ref: ControlPlaneSecurityGroup
+        SubnetIds:
+          - Ref: PublicSubnet1
+          - Ref: PublicSubnet2
+          - Ref: PublicSubnet3
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      SubnetId:
+        Ref: PublicSubnet1
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${EnvironmentName} Public Subnet (AZ1)
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      SubnetId:
+        Ref: PublicSubnet2
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${EnvironmentName} Public Subnet (AZ2)
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      SubnetId:
+        Ref: PublicSubnet3
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: !Select [ 2, !GetAZs '' ]
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${EnvironmentName} Public Subnet (AZ3)
+  NodeGroup1:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      InstanceTypes:
+        - c3.large
+        - c4.large
+        - c5.large
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 2
+        DesiredSize: 2
+      ClusterName:
+        Ref: AWSEKSCluster
+      CapacityType: SPOT
+      Subnets:
+        - Ref: PublicSubnet1
+        - Ref: PublicSubnet2
+        - Ref: PublicSubnet3
+      NodeRole:
+        Fn::GetAtt:
+          - spotBlueprintsNodeInstanceRole
+          - Arn
+  NodeGroup2:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      InstanceTypes:
+        - m4.large
+        - m5.large
+        - m3.large
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 2
+        DesiredSize: 2
+      ClusterName:
+        Ref: AWSEKSCluster
+      CapacityType: SPOT
+      Subnets:
+        - Ref: PublicSubnet1
+        - Ref: PublicSubnet2
+        - Ref: PublicSubnet3
+      NodeRole:
+        Fn::GetAtt:
+          - spotBlueprintsNodeInstanceRole
+          - Arn
+  NodeGroup3:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      InstanceTypes:
+        - r3.large
+        - r5.large
+        - r4.large
+      ScalingConfig:
+        MinSize: 2
+        MaxSize: 2
+        DesiredSize: 2
+      ClusterName:
+        Ref: AWSEKSCluster
+      CapacityType: SPOT
+      Subnets:
+        - Ref: PublicSubnet1
+        - Ref: PublicSubnet2
+        - Ref: PublicSubnet3
+      NodeRole:
+        Fn::GetAtt:
+          - spotBlueprintsNodeInstanceRole
+          - Arn
+Outputs:
+  spotBlueprintsNodeInstanceRole:
+    Description: The node instance role
+    Value:
+      Fn::GetAtt:
+        - spotBlueprintsNodeInstanceRole
+        - Arn
+  ClusterCertificate:
+    Description: The cluster certificate
+    Value:
+      Fn::GetAtt:
+        - AWSEKSCluster
+        - CertificateAuthorityData
+  ClusterEndpoint:
+    Description: The cluster endpoint
+    Value:
+      Fn::GetAtt:
+        - AWSEKSCluster
+        - Endpoint

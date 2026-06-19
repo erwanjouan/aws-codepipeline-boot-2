@@ -1,0 +1,3 @@
+#!/bin/bash
+
+java -jar -Dspring.profiles.active=${DEPLOYMENT_NAME} /tmp/app.jar > /dev/null 2> /dev/null < /dev/null &

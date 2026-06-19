@@ -1,0 +1,12 @@
+#!/bin/bash
+# to be added to .git/hooks directory
+STAGED_FILES=$(git diff-index --cached --name-only HEAD)
+for STAGE_FILE in $STAGED_FILES
+do
+        FILENAME=$(basename $STAGE_FILE)
+        if [[ "$FILENAME" == "cicd.yml" ]] || [[ "$FILENAME" == "infra.yml" ]]
+        then
+                echo [git pre-commit hook] linting $STAGE_FILE
+                cfn-lint $STAGE_FILE
+        fi
+done

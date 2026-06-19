@@ -1,0 +1,660 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed on ECS - EC2 mode - behind an ALB
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  ApplicationPort:
+    Type: String
+    Default: 8080
+  OnDemandInstancesMinSize:
+    Type: String
+    Default: 0
+  OnDemandInstancesMaxSize:
+    Type: String
+    Default: 10
+  SpotInstancesMinSize:
+    Type: String
+    Default: 0
+  SpotInstancesMaxSize:
+    Type: String
+    Default: 10
+  EcsTaskDesiredCount:
+    Type: String
+    Default: 2
+  AlbPort:
+    Type: String
+    Default: 80
+  LatestECSOptimizedAMI:
+    Description: AMI ID
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t3.medium
+  # AWS::ECS::CapacityProvider ManagedScaling
+  InstanceWarmupPeriod:
+    Type: Number
+    Description: >
+      The period of time, in seconds, after a newly launched Amazon EC2 instance 
+      can contribute to CloudWatch metrics for Auto Scaling group. 
+      If this parameter is omitted, the default value of 300 seconds is used.
+    Default: 30
+    MinValue: 0
+    MaxValue: 10000
+  TargetCapacity:
+    Type: Number
+    Description: >
+      The target capacity utilization as a percentage for the capacity provider. 
+      The specified value must be greater than 0 and less than or equal to 100. 
+      For example, if you want the capacity provider to maintain 10% spare capacity, 
+      then that means the utilization is 90%, so use a targetCapacity of 90. 
+      The default value of 100 percent results in the Amazon EC2 instances in your 
+      Auto Scaling group being completely used.
+    ConstraintDescription: The specified value must be > 0 and <= 100
+    Default: 100
+    MinValue: 1
+    MaxValue: 100
+  MinimumScalingStepSize:
+    Type: Number
+    Description: >
+      The minimum number of Amazon EC2 instances that Amazon ECS will scale out at one time. 
+      The scale in process is not affected by this parameter If this parameter is omitted, the default value of 1 is used.
+      When additional capacity is required, Amazon ECS will scale up the minimum scaling step size even if the 
+      actual demand is less than the minimum scaling step size.
+      If you use a capacity provider with an Auto Scaling group configured with more than one Amazon EC2 instance type 
+      or Availability Zone, Amazon ECS will scale up by the exact minimum scaling step size value 
+      and will ignore both the maximum scaling step size as well as the capacity demand.
+    ConstraintDescription: The specified value must be >= 1 and <= 10000
+    Default: 1
+    MinValue: 1
+    MaxValue: 10000
+  MaximumScalingStepSize:
+    Type: Number
+    Description: >
+      The maximum number of Amazon EC2 instances that Amazon ECS will scale out at one time. 
+      The scale in process is not affected by this parameter. If this parameter is omitted, 
+      the default value of 10000 is used.
+    ConstraintDescription: The specified value must be >= 1 and less <= 10000
+    Default: 1
+    MinValue: 1
+    MaxValue: 10000
+  # DefaultCapacityProviderStrategy
+  Weight:
+    Type: Number
+    Description: >
+      The weight value designates the relative percentage of the total number of tasks launched that should use 
+      the specified capacity provider. The weight value is taken into consideration after the base value, 
+      if defined, is satisfied.
+      If no weight value is specified, the default value of 0 is used. When multiple capacity providers are specified 
+      within a capacity provider strategy, at least one of the capacity providers must have a weight value greater 
+      than zero and any capacity providers with a weight of 0 can't be used to place tasks. If you specify multiple 
+      capacity providers in a strategy that all have a weight of 0, any RunTask or CreateService actions using the 
+      capacity provider strategy will fail.
+      An example scenario for using weights is defining a strategy that contains two capacity providers and both 
+      have a weight of 1, then when the base is satisfied, the tasks will be split evenly across the two capacity 
+      providers. Using that same logic, if you specify a weight of 1 for capacityProviderA and a weight of 4 
+      for capacityProviderB, then for every one task that's run using capacityProviderA, four tasks would use 
+      capacityProviderB.
+    Default: 1
+    MinValue: 0
+    MaxValue: 1000
+  OnDemandCapacityProviderName:
+    Type: String
+    Default: ec2-on-demand
+  SpotCapacityProviderName:
+    Type: String
+    Default: ec2-spot
+  ContainerImageRepositoryUrl:
+    Type: String
+
+Resources:
+
+  Network:
+    Type: Atomicity::Vpc::Internet::MODULE
+
+  ##########################
+  # ALB
+  ##########################
+
+  ALBSecurityGroup:
+    Properties:
+      GroupDescription: allow access to ALB from internet
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref AlbPort
+          ToPort: !Ref AlbPort
+          CidrIp: 0.0.0.0/0
+    Type: AWS::EC2::SecurityGroup
+
+  ApplicationLoadBalancer:
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+      # noinspection YamlUnresolvedReferences
+      Subnets: [ !Ref NetworkPublicSubnet1, !Ref NetworkPublicSubnet2 ] # Should be public
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+    # noinspection YamlUnresolvedReferences
+    DependsOn: NetworkGatewayToInternet
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+
+  ALBListener:
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn:
+        Ref: ApplicationLoadBalancer
+      Port: !Ref AlbPort
+      Protocol: HTTP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+
+  ALBTargetGroup:
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      UnhealthyThresholdCount: 2
+      HealthyThresholdCount: 2
+      HealthCheckPath: /actuator/health
+      Port: !Ref ApplicationPort
+      Protocol: HTTP
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 5
+    DependsOn: ApplicationLoadBalancer
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+
+  ##########################
+  # ECS
+  ##########################
+
+  EcsEc2Cluster:
+    # ECS Cluster
+    Properties:
+      ClusterName: !Ref ProjectDeploymentName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+    Type: AWS::ECS::Cluster
+
+  EcsEc2ClusterCPAssociation:
+    Properties:
+      Cluster: !Ref EcsEc2Cluster
+      CapacityProviders:
+        - !Ref OnDemandCapacityProvider
+        - !Ref SpotCapacityProvider
+      # Can be set at ECS Service level also
+      DefaultCapacityProviderStrategy:
+        # The base value designates how many tasks, at a minimum, to run on the specified capacity provider.
+        # Only one capacity provider in a capacity provider strategy can have a base defined.
+        # If no value is specified, the default value of 0 is used.
+        - Base: !Ref EcsTaskDesiredCount
+          CapacityProvider: !Ref OnDemandCapacityProvider
+          Weight: !Ref Weight
+        - Base: 0
+          CapacityProvider: !Ref SpotCapacityProvider
+          Weight: 4
+    Type: AWS::ECS::ClusterCapacityProviderAssociations
+
+  OnDemandCapacityProvider:
+    Properties:
+      Name: !Ref OnDemandCapacityProviderName
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref OnDemandAutoScalingGroup
+        ManagedTerminationProtection: DISABLED
+        ManagedScaling:
+          InstanceWarmupPeriod: !Ref InstanceWarmupPeriod
+          MaximumScalingStepSize: !Ref MaximumScalingStepSize
+          MinimumScalingStepSize: !Ref MinimumScalingStepSize
+          Status: ENABLED
+          TargetCapacity: !Ref TargetCapacity
+    Type: AWS::ECS::CapacityProvider
+
+  SpotCapacityProvider:
+    Properties:
+      Name: !Ref SpotCapacityProviderName
+      AutoScalingGroupProvider:
+        AutoScalingGroupArn: !Ref SpotAutoScalingGroup
+        ManagedTerminationProtection: DISABLED
+        ManagedScaling:
+          InstanceWarmupPeriod: !Ref InstanceWarmupPeriod
+          MaximumScalingStepSize: !Ref MaximumScalingStepSize
+          MinimumScalingStepSize: !Ref MinimumScalingStepSize
+          Status: ENABLED
+          TargetCapacity: !Ref TargetCapacity
+    Type: AWS::ECS::CapacityProvider
+
+  EcsEc2SecurityGroup:
+    Properties:
+      GroupDescription: allow access to ECS from ALB
+      # noinspection YamlUnresolvedReferences
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ApplicationPort
+          ToPort: !Ref ApplicationPort
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+    Type: AWS::EC2::SecurityGroup
+
+  EC2Role:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:CreateCluster'
+                  - 'ecs:DeregisterContainerInstance'
+                  - 'ecs:DiscoverPollEndpoint'
+                  - 'ecs:Poll'
+                  - 'ecs:RegisterContainerInstance'
+                  - 'ecs:StartTelemetrySession'
+                  - 'ecs:Submit*'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+    Type: AWS::IAM::Role
+
+  EC2InstanceProfile:
+    Properties:
+      Path: /
+      Roles:
+        - !Ref EC2Role
+    Type: AWS::IAM::InstanceProfile
+
+  Ec2LaunchTemplate:
+    Properties:
+      LaunchTemplateName: !Ref ProjectDeploymentName
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt EC2InstanceProfile.Arn
+        ImageId: !Ref LatestECSOptimizedAMI
+        InstanceType: !Ref InstanceType
+        SecurityGroupIds:
+          - !GetAtt EcsEc2SecurityGroup.GroupId
+        UserData: !Base64
+          'Fn::Join':
+            - ''
+            - - |
+                #!/bin/bash -xe
+              - echo ECS_CLUSTER=
+              - !Ref EcsEc2Cluster
+              - |2
+                 >> /etc/ecs/ecs.config
+              - |
+                yum install -y aws-cfn-bootstrap
+              - '/opt/aws/bin/cfn-signal -e $? '
+              - '         --stack '
+              - !Ref 'AWS::StackName'
+              - '         --resource ECSAutoScalingGroup '
+              - '         --region '
+              - !Ref 'AWS::Region'
+              - |+
+    Type: AWS::EC2::LaunchTemplate
+
+  OnDemandAutoScalingGroup:
+    Properties:
+      # noinspection YamlUnresolvedReferences
+      VPCZoneIdentifier: [ !Ref NetworkPrivateSubnet1, !Ref NetworkPrivateSubnet2 ]
+      MinSize: !Ref OnDemandInstancesMinSize
+      MaxSize: !Ref OnDemandInstancesMaxSize
+      LaunchTemplate:
+        LaunchTemplateId: !Ref Ec2LaunchTemplate
+        Version: !GetAtt Ec2LaunchTemplate.LatestVersionNumber
+    Type: AWS::AutoScaling::AutoScalingGroup
+
+  SpotAutoScalingGroup:
+    Properties:
+      # noinspection YamlUnresolvedReferences
+      VPCZoneIdentifier: [ !Ref NetworkPrivateSubnet1, !Ref NetworkPrivateSubnet2 ]
+      MinSize: !Ref SpotInstancesMinSize
+      MaxSize: !Ref SpotInstancesMaxSize
+      MixedInstancesPolicy:
+        InstancesDistribution:
+          # The allocation strategy to apply to your On-Demand Instances when they are launched. Possible instance
+          # types are determined by the launch template overrides that you specify.
+          OnDemandAllocationStrategy: prioritized
+          # The minimum amount of the Auto Scaling group's capacity that must be fulfilled by On-Demand Instances.
+          # This base portion is launched first as your group scales.
+          OnDemandBaseCapacity: 0
+          # Controls the percentages of On-Demand Instances and Spot Instances for your additional capacity
+          # beyond OnDemandBaseCapacity. Expressed as a number (for example, 20 specifies 20% On-Demand Instances,
+          # 80% Spot Instances). If set to 100, only On-Demand Instances are used.
+          OnDemandPercentageAboveBaseCapacity: 0
+          # The strategy for allocating Spot Instances when launching or replacing instances.
+          #   capacity-optimized: Requests Spot Instances using pools that are optimally chosen based on the available Spot capacity.
+          #     This strategy has the lowest risk of interruption. To give certain instance types a higher chance of
+          #     launching first, use capacity-optimized-prioritized.
+          #   capacity-optimized-prioritized: You set the order of instance types for the launch template overrides from
+          #     highest to lowest priority (from first to last in the list). Amazon EC2 Auto Scaling honors the instance
+          #     type priorities on a best effort basis but optimizes for capacity first. Note that if the On-Demand
+          #     allocation strategy is set to prioritized, the same priority is applied when fulfilling On-Demand capacity.
+          #     This is not a valid value for Auto Scaling groups that specify InstanceRequirements.
+          #   lowest-price: Requests Spot Instances using the lowest priced pools within an Availability Zone, across
+          #     the number of Spot pools that you specify for the SpotInstancePools property. To ensure that your desired
+          #     capacity is met, you might receive Spot Instances from several pools. This is the default value, but it
+          #     might lead to high interruption rates because this strategy only considers instance price and not available capacity.
+          #   price-capacity-optimized (recommended): The price and capacity optimized allocation strategy looks at both
+          #     price and capacity to select the Spot Instance pools that are the least likely to be interrupted
+          #     and have the lowest possible price.
+          SpotAllocationStrategy: price-capacity-optimized
+        LaunchTemplate:
+          LaunchTemplateSpecification:
+            LaunchTemplateId: !Ref Ec2LaunchTemplate
+            Version: !GetAtt Ec2LaunchTemplate.LatestVersionNumber
+    Type: AWS::AutoScaling::AutoScalingGroup
+
+  ECSExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: [ ecs-tasks.amazonaws.com ]
+          Action: [ sts:AssumeRole ]
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+    Type: AWS::IAM::Role
+
+  ECSTaskRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: !Sub ${ProjectDeploymentName}-ecs-task-info
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+        - PolicyName: !Sub ${ProjectDeploymentName}-s3-upload
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource:
+                  - !Sub "arn:aws:s3:::${ProjectDeploymentName}/*"
+                  - !Sub "arn:aws:s3:::${ProjectDeploymentName}"
+                Effect: Allow
+                Action: "s3:*"
+        - PolicyName: !Sub ${ProjectDeploymentName}-ecs-service-info
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${ProjectDeploymentName}/${ProjectDeploymentName}"
+                Effect: Allow
+                Action:
+                  - ecs:ListServices
+                  - ecs:DescribeServices
+        - PolicyName: !Sub ${ProjectDeploymentName}-parameter-store
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ssm:DescribeParameters'
+                  - 'ssm:GetParameter'
+                  - 'ssm:GetParameters'
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  EcsEc2LogGroup:
+    Properties:
+      LogGroupName: !Sub /ecs/ec2/${ProjectDeploymentName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+
+  EcsEc2TaskDefinition:
+    # ECS Task Definition
+    Properties:
+      NetworkMode: host # basic mode, maps same container port to host port
+      Family: !Ref ProjectDeploymentName
+      Cpu: 2048
+      Memory: 3827
+      ExecutionRoleArn: !GetAtt ECSExecutionRole.Arn # Fargate requires task definition to have execution role ARN to support ECR images
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      RequiresCompatibilities:
+        - EC2
+      ContainerDefinitions:
+        - Name: !Ref ProjectDeploymentName
+          Image: !Sub ${ContainerImageRepositoryUrl}:${ProjectVersion}
+          Environment:
+            - Name: SERVER_PORT
+              Value: !Ref ApplicationPort
+            - Name: SPRING_PROFILES_ACTIVE
+              Value: !Ref DeploymentName
+            - Name: PROJECT_DEPLOYMENT_NAME
+              Value: !Ref ProjectDeploymentName
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref EcsEc2LogGroup
+              awslogs-stream-prefix: oam-ecs
+          PortMappings:
+            - ContainerPort: !Ref 'ApplicationPort'
+    Type: AWS::ECS::TaskDefinition
+
+  EcsEc2Service:
+    # ECS Service
+    Properties:
+      ServiceName: !Ref ProjectDeploymentName
+      Cluster: !Ref EcsEc2Cluster
+      DesiredCount: !Ref EcsTaskDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 100
+      LoadBalancers:
+        - TargetGroupArn: !Ref ALBTargetGroup # loadBalancerName and targetGroupArn cannot both be specified. You must specify either a loadBalancerName or a targetGroupArn.
+          ContainerPort: !Ref ApplicationPort
+          ContainerName: !Ref ProjectDeploymentName
+      TaskDefinition: !Ref EcsEc2TaskDefinition
+    DependsOn:
+      - ALBListener # unless "The target group does not have an associated load balancer"
+      - EcsEc2LogGroup
+    Type: AWS::ECS::Service
+
+  #####################
+  # ECS Service Scaling
+  #####################
+
+  # https://containersonaws.com/pattern/scale-ecs-service-cloudformation
+
+  # Role that Application Auto Scaling will use to interact with
+  # CloudWatch and Amazon ECS
+  AutoscalingRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ application-autoscaling.amazonaws.com ]
+            Action: [ 'sts:AssumeRole' ]
+      Path: /
+      Policies:
+        - PolicyName: service-autoscaling
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'application-autoscaling:*'
+                  - 'cloudwatch:DescribeAlarms'
+                  - 'cloudwatch:PutMetricAlarm'
+                  - 'ecs:DescribeServices'
+                  - 'ecs:UpdateService'
+                Resource: '*'
+    Type: AWS::IAM::Role
+
+  # Enable autoscaling for the service
+  ScalableTarget:
+    Properties:
+      ServiceNamespace: 'ecs'
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ResourceId: !Sub
+        - 'service/${ClusterName}/${ServiceName}'
+        - ClusterName: !Ref EcsEc2Cluster
+          ServiceName: !GetAtt EcsEc2Service.Name
+      MinCapacity: 2
+      MaxCapacity: 10
+      RoleARN: !GetAtt AutoscalingRole.Arn
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+
+  # Create scaling policies that describe how to scale the service up and down.
+  ScaleDownPolicy:
+    DependsOn: ScalableTarget
+    Properties:
+      PolicyName: !Sub
+        - 'scale-${ClusterName}-down'
+        - ClusterName: !Ref EcsEc2Cluster
+      PolicyType: StepScaling
+      ResourceId: !Sub
+        - 'service/${ClusterName}/${ServiceName}'
+        - ClusterName: !Ref EcsEc2Cluster
+          ServiceName: !GetAtt EcsEc2Service.Name
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: 'ecs'
+      StepScalingPolicyConfiguration:
+        AdjustmentType: 'ChangeInCapacity'
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -1
+        MetricAggregationType: 'Average'
+        Cooldown: 60
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+
+  ScaleUpPolicy:
+    DependsOn: ScalableTarget
+    Properties:
+      PolicyName: !Sub
+        - 'scale-${ClusterName}-up'
+        - ClusterName: !Ref EcsEc2Cluster
+      PolicyType: StepScaling
+      ResourceId: !Sub
+        - 'service/${ClusterName}/${ServiceName}'
+        - ClusterName: !Ref EcsEc2Cluster
+          ServiceName: !GetAtt EcsEc2Service.Name
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: 'ecs'
+      StepScalingPolicyConfiguration:
+        AdjustmentType: 'ChangeInCapacity'
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            MetricIntervalUpperBound: 15
+            ScalingAdjustment: 1
+          - MetricIntervalLowerBound: 15
+            MetricIntervalUpperBound: 25
+            ScalingAdjustment: 2
+          - MetricIntervalLowerBound: 25
+            ScalingAdjustment: 3
+        MetricAggregationType: 'Average'
+        Cooldown: 60
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+
+  # Create alarms to trigger the scaling policies
+  LowCpuUsageAlarm:
+    Properties:
+      AlarmName: !Sub
+        - 'low-cpu-${ClusterName}'
+        - ClusterName: !Ref EcsEc2Cluster
+      AlarmDescription: !Sub
+        - "Low CPU utilization for service ${ClusterName}"
+        - ClusterName: !Ref EcsEc2Cluster
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ServiceName
+          Value: !GetAtt EcsEc2Service.Name
+        - Name: ClusterName
+          Value: !Ref EcsEc2Cluster
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: LessThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref ScaleDownPolicy
+    Type: AWS::CloudWatch::Alarm
+
+  HighCpuUsageAlarm:
+    Properties:
+      AlarmName: !Sub
+        - 'high-cpu-${ClusterName}'
+        - ClusterName: !Ref EcsEc2Cluster
+      AlarmDescription: !Sub
+        - "High CPU utilization for service ${ClusterName}"
+        - ClusterName: !Ref EcsEc2Cluster
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Dimensions:
+        - Name: ServiceName
+          Value: !GetAtt EcsEc2Service.Name
+        - Name: ClusterName
+          Value: !Ref EcsEc2Cluster
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 70
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref ScaleUpPolicy
+    Type: AWS::CloudWatch::Alarm
+
+  EnableStressParameter:
+    Properties:
+      DataType: text
+      Name: /custom/stress
+      Type: String
+      Value: false
+    Type: AWS::SSM::Parameter
+
+  ###############
+  # VPC Endpoints
+  ###############
+
+  VpcEndPoints:
+    Properties:
+      # noinspection YamlUnresolvedReferences
+      VPC: !Ref NetworkVPC
+      # noinspection YamlUnresolvedReferences
+      PrivateSubnet1: !Ref NetworkPrivateSubnet1
+      # noinspection YamlUnresolvedReferences
+      PrivateSubnet2: !Ref NetworkPrivateSubnet2
+    Type: Atomicity::Vpc::Endpoints::MODULE
+
+Outputs:
+  WatchServiceEndpoint:
+    Value: !Sub
+      - "http://${LbDNSName}/${DeploymentName}"
+      - LbDNSName: !GetAtt 'ApplicationLoadBalancer.DNSName'

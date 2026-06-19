@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - aws --version && docker --version && java --version && mvn --version
+  build:
+    commands:
+      - mvn package -Plambda
+  post_build:
+    commands:
+      - cp target/${PROJECT_NAME}*.jar ${ARTIFACT_NAME}
+      - aws s3 cp ${ARTIFACT_NAME} s3://${ARTIFACT_BUCKET}/${CODEBUILD_RESOLVED_SOURCE_VERSION}/${ARTIFACT_NAME}
+artifacts:
+  files:
+    - ${DEPLOYMENT_NAME}/infra.yml # for Cloudformation deploy stage
+  discard-paths: yes
+
+cache:
+  paths:
+    - /root/.m2/**/*

@@ -1,0 +1,19 @@
+name: Al2023WithAgentsConfig
+description: Builds AMI based on AL2023 with base agents (CodeDeploy, CloudWatch)
+schemaVersion: 1.0
+phases:
+  - name: build
+    steps:
+      - name: DownloadCloudWatchAgentConfigFromParameterStore # Should contain no space
+        action: ExecuteBash
+        inputs:
+          commands:
+          - sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c ssm:/custom/cloudwatch-agent/config/linux
+
+  - name: validate
+    steps:
+      - name: ValidateConfig  # Should contain no space
+        action: ExecuteBash
+        inputs:
+          commands:
+            - cat /etc/systemd/system/amazon-cloudwatch-agent.service

@@ -1,0 +1,135 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed with Elastic Beanstalk on Docker
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  ArtifactBucket:
+    Type: String
+  SolutionStackName:
+    Type: String
+  SpringProfilesActive:
+    Type: String
+  DeploymentPolicy:
+    Type: String
+    Default: Rolling
+    AllowedValues:
+      - AllAtOnce
+      - Rolling
+      - RollingWithAdditionalBatch
+      - Immutable
+      - TrafficSplitting
+  InstanceTypes:
+    Type: String
+    Default: t3.medium,t2.medium
+
+# Possible values for DeploymentPolicy:
+# - AllAtOnce (default) : Deploy the new version to all instances simultaneously. All instances in your environment are out of service for a short time while the deployment occurs
+# - Rolling : Deploy the new version in batches. Each batch is taken out of service during the deployment phase, reducing your environment's capacity by the number of instances in a batch.
+# - RollingWithAdditionalBatch : Deploy the new version in batches, but first launch a new batch of instances to ensure full capacity during the deployment process.
+# - Immutable: Deploy the new version to a fresh group of instances by performing an immutable update
+# - TrafficSplitting:  Deploy the new version to a fresh group of instances and temporarily split incoming client traffic between the existing application version and the new one.
+
+
+Resources:
+
+  EbApplication:
+    Properties:
+      ApplicationName: !Ref ProjectDeploymentName
+      Description: Spring boot and elastic beanstalk
+    Type: AWS::ElasticBeanstalk::Application
+
+  EbApplicationVersion:
+    Properties:
+      ApplicationName: !Ref EbApplication
+      SourceBundle:
+        S3Bucket: !Ref ArtifactBucket
+        S3Key: !Sub '${ProjectVersion}/output.zip'
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+
+  EbConfigurationTemplate:
+    Properties:
+      ApplicationName: !Ref EbApplication
+      Description: A template for spring boot application deployment with DockerFile
+      OptionSettings:
+        - Namespace: aws:ec2:instances
+          OptionName: InstanceTypes
+          Value: !Ref InstanceTypes
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref BackendInstanceProfile
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: EC2KeyName
+          Value: k2
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: DeploymentPolicy
+          Value: !Ref DeploymentPolicy
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: SPRING_PROFILES_ACTIVE
+          Value: !Ref SpringProfilesActive
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: PROJECT_DEPLOYMENT_NAME
+          Value: !Ref ProjectDeploymentName
+        # The percentage or the fixed number of Amazon EC2 instances in the Auto Scaling group to simultaneously perform deployments on. Valid values vary depending on the BatchSizeType setting used.
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: BatchSize
+          Value: 50
+        # The type of number that's specified in BatchSize. Default = Percentage
+        - Namespace: aws:elasticbeanstalk:command
+          OptionName: BatchSizeType
+          Value: Percentage
+        # Need to make sure environment has applicative load balancer activated unless error is thrown for traffic splitting
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: EnvironmentType
+          Value: LoadBalanced
+        - Namespace: aws:elasticbeanstalk:environment
+          OptionName: LoadBalancerType
+          Value: application
+      SolutionStackName: !Ref SolutionStackName
+    Type: AWS::ElasticBeanstalk::ConfigurationTemplate
+
+  EbEnvironment:
+    Properties:
+      ApplicationName: !Ref EbApplication
+      EnvironmentName: !Ref EbApplication
+      TemplateName: !Ref EbConfigurationTemplate
+      VersionLabel: !Ref EbApplicationVersion
+    Type: AWS::ElasticBeanstalk::Environment
+
+  EbEc2Role:
+    Properties:
+      Description: Role applied on EC2. Provides full access to CodeDeploy resources.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/SecretsManagerReadWrite
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkReadOnly
+      Path: /
+    Type: AWS::IAM::Role
+
+  BackendInstanceProfile:
+    Properties:
+      InstanceProfileName: !Sub '${ProjectDeploymentName}-eb-instance-profile'
+      Path: /
+      Roles:
+        - !Ref EbEc2Role # only one role allowed for EC2, so AmazonSSMManagedInstanceCore was attached to it manually
+    Type: AWS::IAM::InstanceProfile
+
+Outputs:
+  WatchServiceEndpoint:
+    Value: !Sub
+      - http://${EndpointURL}/${SpringProfilesActive}
+      - EndpointURL: !GetAtt EbEnvironment.EndpointURL

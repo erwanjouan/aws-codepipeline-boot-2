@@ -1,0 +1,297 @@
+import base64
+import boto3
+import cfnresponse
+import datetime
+import logging
+import os
+import re
+import traceback
+from botocore.signers import RequestSigner
+from kubernetes import client, config
+from kubernetes.client import V1PodTemplateSpec, V1Namespace, V1ObjectMeta, V1Deployment, V1DeploymentSpec, \
+    V1LabelSelector, V1PodSpec, V1Container, V1EnvVar, V1ResourceRequirements, V1ContainerPort, V1Probe
+from kubernetes.client.rest import ApiException
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+STS_TOKEN_EXPIRES_IN = 60
+session = boto3.session.Session()
+sts = session.client('sts')
+service_id = sts.meta.service_model.service_id
+eks = boto3.client('eks')
+cluster_cache = {}
+ec2 = boto3.client('ec2')
+
+cluster_name = os.environ["CLUSTER_NAME"]
+k8s_user_namespace = os.environ["K8S_USER_NAMESPACE"]
+amazonEKSLoadBalancerControllerRoleArn = os.environ["AMAZON_EKS_LOAD_BALANCER_CONTROLLER_ROLE_ARN"]
+
+
+def get_cluster_info():
+    # "Retrieve cluster endpoint and certificate"
+    cluster_info = eks.describe_cluster(name=cluster_name)
+    endpoint = cluster_info['cluster']['endpoint']
+    cert_authority = cluster_info['cluster']['certificateAuthority']['data']
+    cluster_info = {
+        "endpoint": endpoint,
+        "ca": cert_authority
+    }
+    return cluster_info
+
+
+def get_bearer_token():
+    # "Create authentication token"
+    signer = RequestSigner(
+        service_id,
+        session.region_name,
+        'sts',
+        'v4',
+        session.get_credentials(),
+        session.events
+    )
+
+    params = {
+        'method': 'GET',
+        'url': 'https://sts.{}.amazonaws.com/'
+               '?Action=GetCallerIdentity&Version=2011-06-15'.format(session.region_name),
+        'body': {},
+        'headers': {
+            'x-k8s-aws-id': cluster_name
+        },
+        'context': {}
+    }
+
+    signed_url = signer.generate_presigned_url(
+        params,
+        region_name=session.region_name,
+        expires_in=STS_TOKEN_EXPIRES_IN,
+        operation_name=''
+    )
+    base64_url = base64.urlsafe_b64encode(signed_url.encode('utf-8')).decode('utf-8')
+
+    # remove any base64 encoding padding:
+    return 'k8s-aws-v1.' + re.sub(r'=*', '', base64_url)
+
+
+def patch_coredns(v1_apps, deployment_name, kube_system_namespace):
+    try:
+        patch = [{"op": "remove", "path": "/spec/template/metadata/annotations/eks.amazonaws.com~1compute-type"}]
+        resp = v1_apps.patch_namespaced_deployment(name=deployment_name, namespace=kube_system_namespace, body=patch)
+        logger.info("[OK] patch_coredns: %s\n" % resp)
+    except ApiException as e:
+        logger.info("Exception when calling AppsV1Api->patch_namespaced_deployment: %s\n" % e)
+
+
+def restart_deployment(v1_apps, deployment, namespace):
+    now = datetime.datetime.utcnow()
+    now = str(now.isoformat("T") + "Z")
+    body = {
+        'spec': {
+            'template': {
+                'metadata': {
+                    'annotations': {
+                        'kubectl.kubernetes.io/restartedAt': now
+                    }
+                }
+            }
+        }
+    }
+    try:
+        resp = v1_apps.patch_namespaced_deployment(deployment, namespace, body, pretty='true')
+        logger.info("[OK] restart_deployment: %s\n" % resp)
+    except ApiException as e:
+        logger.info("Exception when restarting deployment, calling AppsV1Api->patch_namespaced_deployment: %s\n" % e)
+
+
+def create_namespace(core_v1, namespace):
+    try:
+        body = V1Namespace(metadata=V1ObjectMeta(name=namespace))
+        resp = core_v1.create_namespace(body=body)
+        logger.info("[OK] create_namespace: %s\n" % resp)
+    except ApiException as e:
+        logger.info("Exception when calling CoreV1Api->create_namespace: %s\n" % e)
+
+
+def create_service_account(v1_core, namespace):
+    body = {
+        'metadata': {
+            'labels': {
+                'app.kubernetes.io/component': 'controller',
+                'app.kubernetes.io/name': 'aws-load-balancer-controller',
+                'eks.amazonaws.com/audience': 'sts.amazonaws.com'
+            },
+            'name': 'aws-load-balancer-controller',
+            'namespace': namespace,
+            'annotations': {
+                'eks.amazonaws.com/role-arn': amazonEKSLoadBalancerControllerRoleArn
+            }
+        }
+    }
+    try:
+        resp = v1_core.create_namespaced_service_account(namespace, body)
+        logger.info("[OK] create_service_account: %s\n" % resp)
+    except ApiException as e:
+        logger.info("Exception when calling CoreV1Api->create_namespaced_service_account: %s\n" % e)
+
+
+def patch_aws_auth_configmap(v1_core, config_map_name, namespace):
+    data_to_append = {
+        'mapUsers': '- groups:\n'
+                    '    - system:masters\n'
+                    '  username: devops\n'
+                    '  userarn: arn:aws:iam::467420073914:user/devops\n'
+                    '- groups:\n'
+                    '    - system:masters\n'
+                    '  username: terraform\n'
+                    '  userarn: arn:aws:iam::467420073914:user/terraform\n'
+    }
+    try:
+        body = v1_core.read_namespaced_config_map(name=config_map_name, namespace=namespace)
+        body.data |= data_to_append
+        resp = v1_core.patch_namespaced_config_map(name=config_map_name, namespace=namespace, body=body)
+        logger.info("[OK] patch_aws_auth_configmap: %s\n" % resp)
+    except ApiException as e:
+        logger.info("Exception when calling patch_aws_auth_configmap: %s\n" % e)
+
+
+def purge_alb_security_groups(cluster_name_to_purge):
+    sgs = ec2.describe_security_groups(Filters=[
+        {
+            'Name': 'tag:elbv2.k8s.aws/cluster',
+            'Values': [cluster_name_to_purge]
+        },
+    ])
+    if sgs['SecurityGroups'] is not None:
+        for sg in sgs['SecurityGroups']:
+            try:
+                resp = ec2.delete_security_group(GroupId=sg['GroupId'])
+                logger.info("[OK] Deleted security group %s\n" % resp)
+            except Exception as e:
+                logger.info("Exception when deleting security group: %s\n" % e)
+
+
+def create_pod_deployment(v1_apps, k8s_user_namespace):
+    image_tag = os.environ["IMAGE_TAG"]
+    number_of_replicas = int(os.environ["NUMBER_OF_REPLICAS"])
+    dep = V1Deployment(
+        api_version='apps/v1',
+        kind='Deployment',
+        metadata=V1ObjectMeta(
+            name='deployment-' + k8s_user_namespace,
+            namespace=k8s_user_namespace
+        ),
+        spec=V1DeploymentSpec(
+            replicas=number_of_replicas,
+            selector=V1LabelSelector(match_labels={'app.kubernetes.io/name': 'app-' + k8s_user_namespace}),
+            template=V1PodTemplateSpec(
+                metadata=V1ObjectMeta(labels={'app.kubernetes.io/name': 'app-' + k8s_user_namespace}),
+                spec=V1PodSpec(
+                    containers=[
+                        V1Container(
+                            name='app-' + k8s_user_namespace,
+                            image='467420073914.dkr.ecr.eu-west-1.amazonaws.com/' + k8s_user_namespace + ':' + image_tag,
+                            image_pull_policy='Always',
+                            env=[
+                                V1EnvVar(name="SPRING_PROFILES_ACTIVE", value='eks'),
+                                V1EnvVar(name="PROJECT_DEPLOYMENT_NAME", value=k8s_user_namespace),
+                            ],
+                            resources=V1ResourceRequirements(
+                                limits={"cpu": "500m", "memory": "2048Mi"}
+                            ),
+                            ports=[V1ContainerPort(container_port=8080)],
+                            liveness_probe=V1Probe(initial_delay_seconds=40,
+                                                   success_threshold=1,  # should be 1 for liveness
+                                                   timeout_seconds=5,
+                                                   http_get=client.V1HTTPGetAction(path="/actuator/health", port=8080)),
+                            readiness_probe=V1Probe(initial_delay_seconds=40,
+                                                    success_threshold=1,
+                                                    timeout_seconds=5,
+                                                    http_get=client.V1HTTPGetAction(path="/eks", port=8080))
+                        ),
+                    ],
+                    service_account_name='aws-load-balancer-controller'
+                )
+            )
+        )
+    )
+    try:
+        resp = v1_apps.create_namespaced_deployment(body=dep, namespace=k8s_user_namespace)
+        logger.info("[OK] create_pod_deployment: %s\n" % resp)
+    except ApiException as e:
+        logger.info("Exception when calling AppsV1Api.create_namespaced_deployment: %s\n" % e)
+
+
+def update_pod_deployment(v1_apps, k8s_user_namespace):
+    deployment = v1_apps.read_namespaced_deployment(
+        name='deployment-' + k8s_user_namespace,
+        namespace=k8s_user_namespace
+    )
+    update_deployment_image_tag(deployment=deployment, image_name=k8s_user_namespace)
+    update_deployment_number_of_replicas(deployment=deployment)
+    try:
+        resp = v1_apps.patch_namespaced_deployment(
+            name='deployment-' + k8s_user_namespace, namespace=k8s_user_namespace, body=deployment)
+        logger.info("[OK] update_pod_deployment: %s\n" % resp)
+    except ApiException as e:
+        logger.info("Exception when calling AppsV1Api.patch_namespaced_deployment: %s\n" % e)
+
+
+def update_deployment_image_tag(deployment, image_name):
+    image_tag = os.environ["IMAGE_TAG"]
+    deployment.spec.template.spec.containers[0].image = \
+        '467420073914.dkr.ecr.eu-west-1.amazonaws.com/' + image_name + ':' + image_tag
+
+
+def update_deployment_number_of_replicas(deployment):
+    number_of_replicas = int(os.environ["NUMBER_OF_REPLICAS"])
+    deployment.spec.replicas = number_of_replicas
+
+
+def lambda_handler(_event, _context):
+    # "Lambda handler"
+    if cluster_name in cluster_cache:
+        cluster = cluster_cache[cluster_name]
+    else:
+        # not present in cache retrieve cluster info from EKS service
+        cluster = get_cluster_info()
+        # store in cache for execution environment resuse
+        cluster_cache[cluster_name] = cluster
+
+    kubeconfig = {
+        'apiVersion': 'v1',
+        'clusters': [{
+            'name': 'cluster1',
+            'cluster': {
+                'certificate-authority-data': cluster["ca"],
+                'server': cluster["endpoint"]}
+        }],
+        'contexts': [{'name': 'context1', 'context': {'cluster': 'cluster1', "user": "user1"}}],
+        'current-context': 'context1',
+        'kind': 'Config',
+        'preferences': {},
+        'users': [{'name': 'user1', "user": {'token': get_bearer_token()}}]
+    }
+    response_data = {}
+    try:
+        logger.info('got event {}'.format(_event))
+        config.load_kube_config_from_dict(config_dict=kubeconfig)
+        v1_apps = client.AppsV1Api()
+        v1_core = client.CoreV1Api()
+        if _event['RequestType'] is not None and _event['RequestType'] in ['Create']:
+            patch_coredns(v1_apps, "coredns", "kube-system")
+            restart_deployment(v1_apps, "coredns", "kube-system")
+            patch_aws_auth_configmap(v1_core, "aws-auth", "kube-system")
+            create_namespace(v1_core, k8s_user_namespace)
+            create_service_account(v1_core, k8s_user_namespace)
+            create_pod_deployment(v1_apps, k8s_user_namespace)
+        if _event['RequestType'] is not None and _event['RequestType'] in ['Update']:
+            update_pod_deployment(v1_apps, k8s_user_namespace)
+        if _event['RequestType'] is not None and _event['RequestType'] in ['Delete']:
+            purge_alb_security_groups(cluster_name)
+        cfnresponse.send(_event, _context, cfnresponse.SUCCESS, response_data, 'CustomResourcePhysicalID')
+    except Exception:
+        # Sending FAILED signal to CloudFormation
+        logger.info('Exception {}'.format(traceback.format_exc()))
+        cfnresponse.send(_event, _context, cfnresponse.FAILED, response_data, 'CustomResourcePhysicalID')
+    return f"ok"

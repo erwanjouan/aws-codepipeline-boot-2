@@ -1,0 +1,15 @@
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-al2-jdk
+
+RUN yum install -y awscli jq
+
+ARG JAR_FILE=target/*.jar
+COPY ${JAR_FILE} app.jar
+
+# Pushes JFR profiling files to S3
+COPY alb-ecs-fargate/s3_jfr_upload.sh /tmp/s3_jfr_upload.sh
+
+ENV JFR_FLAGS="-XX:StartFlightRecording=disk=true,maxage=3m,dumponexit=true,filename=/tmp/jfr/aggregated.jfr -XX:FlightRecorderOptions=maxchunksize=1M,memorysize=1M,repository=/tmp/jfr"
+
+EXPOSE 8080
+
+ENTRYPOINT nohup /tmp/s3_jfr_upload.sh & java ${JFR_FLAGS} -jar /app.jar

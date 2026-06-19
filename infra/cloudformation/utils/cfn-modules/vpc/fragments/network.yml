@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Base Network
+
+Resources:
+
+  ##########
+  # Network
+  ##########
+
+  VPC:
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+    Type: AWS::EC2::VPC
+
+  PublicSubnet1:
+    Properties:
+      CidrBlock: 10.0.3.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+    Type: AWS::EC2::Subnet
+
+  PublicSubnet2:
+    Properties:
+      CidrBlock: 10.0.4.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+    Type: AWS::EC2::Subnet
+
+  PrivateSubnet1:
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+    Type: AWS::EC2::Subnet
+
+  PrivateSubnet2:
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      MapPublicIpOnLaunch: false
+    Type: AWS::EC2::Subnet
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayToInternet:
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+    Type: AWS::EC2::VPCGatewayAttachment
+
+  PublicRouteTable:
+    Properties:
+      VpcId: !Ref VPC
+    Type: AWS::EC2::RouteTable
+
+  PublicRoute:
+    DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+    Type: AWS::EC2::Route
+
+  PublicSubnet1RouteTableAssociation:
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  PublicSubnet2RouteTableAssociation:
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  # Instances need internet for yum
+
+  NatGateway:
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      AllocationId: !GetAtt NatPublicIP.AllocationId
+    Type: AWS::EC2::NatGateway
+
+  NatPublicIP:
+    DependsOn: GatewayToInternet
+    Properties:
+      Domain: vpc
+    Type: AWS::EC2::EIP
+
+  PrivateRouteTable:
+    Properties:
+      VpcId: !Ref VPC
+    Type: AWS::EC2::RouteTable
+
+  PrivateRoute:
+    Properties:
+      NatGatewayId: !Ref NatGateway
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+    Type: AWS::EC2::Route
+
+  PrivateSubnet1RouteTableAssociation:
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  PrivateSubnet2RouteTableAssociation:
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+    Type: AWS::EC2::SubnetRouteTableAssociation

@@ -1,0 +1,18 @@
+<!DOCTYPE HTML>
+<html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
+<head>
+    <title>Blue Green App</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <style>
+        body {
+            color: white;
+        }
+
+    </style>
+</head>
+<body th:bgcolor="${color}">
+<p th:text="'Hello, ' + ${color} + ' from ' + ${serverAddress} + ' !'"/>
+<br/>
+<p th:text="'Commit id : ' + ${commitId} + ' (' + ${commitTime} + ')'"/>
+</body>
+</html>

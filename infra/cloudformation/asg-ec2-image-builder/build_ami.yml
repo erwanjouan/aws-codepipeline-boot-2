@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: CICD For a Java SpringBoot application deployed with Ec2ImageBuilder on EC2 behind ALB
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: t2.small
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+  GitCommitId:
+    Type: String
+  ParisRegion:
+    Type: String
+    Default: eu-west-3
+  ArtifactOutputBucket:
+    Type: String
+
+Resources:
+
+  ##########################
+  # EC2 Image Builder
+  ##########################
+
+  EC2ImageBuilderInfrastructureConfiguration:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      InstanceProfileName: !Ref EC2ImageBuilderInstanceProfile
+      InstanceTypes:
+        - !Ref InstanceType
+      Logging:
+        S3Logs:
+          S3BucketName: !Ref ArtifactOutputBucket
+          S3KeyPrefix: 'ec2-image-builder/'
+    Type: AWS::ImageBuilder::InfrastructureConfiguration
+
+  EC2ImageBuilderInstanceProfile:
+    Properties:
+      Roles:
+        - !Ref EC2ImageBuilderRole
+    Type: AWS::IAM::InstanceProfile
+
+  EC2ImageBuilderRole:
+    Properties:
+      Description: Role applied on EC2 Image Builder
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: ec2.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+        - PolicyName: code-deploy-launch-template-policy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:CreateTags
+                  - iam:PassRole
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:PutRetentionPolicy
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeDeployFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AWSImageBuilderFullAccess
+      Path: /
+    Type: AWS::IAM::Role
+
+  EC2ImageBuilderComponent:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      ChangeDescription: Installs base agents
+      Data: !Sub |
+        name: Build immutable image with blue green app 
+        description: This is hello world testing doc
+        schemaVersion: 1.0
+        phases:
+          - name: build
+            steps:
+              - name: InstallDependencies # Should contain no space
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo su
+                    - useradd springboot
+                    - yum upgrade -y
+                    - yum install -y java-17-amazon-corretto-headless
+                    - yum update -y aws-cfn-bootstrap
+                    - cd /opt && mkdir springboot
+                    - aws s3 cp s3://${ArtifactOutputBucket}/${GitCommitId}/app.jar /opt/springboot/app.jar
+                    - aws s3 cp s3://${ArtifactOutputBucket}/${GitCommitId}/springboot.service /etc/systemd/system/springboot.service
+                    - chown -R springboot:springboot springboot
+                    - systemctl daemon-reload
+                    - systemctl enable springboot.service
+          - name: validate
+            steps:
+              - name: ValidateApp  # Should contain no space
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - systemctl is-enabled --quiet springboot.service
+          - name: test
+            steps:
+              - name: TestApp  # Should contain no space
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - systemctl is-active --quiet springboot.service
+                    - curl --fail http://localhost:8080/api
+      Description: Installs base agents
+      Platform: Linux
+      SupportedOsVersions: [ "Amazon Linux 2" ]
+      Version: '1.0.0'
+      Tags:
+        Name: !Ref ProjectDeploymentName
+    Type: AWS::ImageBuilder::Component
+
+  EC2ImageBuilderRecipe:
+    Properties:
+      Components:
+        - ComponentArn: !GetAtt EC2ImageBuilderComponent.Arn
+      Name: !Ref ProjectDeploymentName
+      ParentImage: !Ref LatestAmiId
+      Version: '1.0.0'
+    Type: AWS::ImageBuilder::ImageRecipe
+
+  EC2ImageBuilderDistributionConfiguration:
+    Properties:
+      Name: !Ref ProjectDeploymentName
+      Distributions:
+        - Region: !Ref AWS::Region
+          AmiDistributionConfiguration:
+            Name: !Sub "${ProjectDeploymentName}-${AWS::Region}-{{ imagebuilder:buildDate }}"
+            AmiTags:
+              Name: !Ref ProjectDeploymentName
+            Description: Ami with agents and Java
+
+        - AmiDistributionConfiguration:
+            Name: !Sub "${ProjectDeploymentName}-${ParisRegion}-{{ imagebuilder:buildDate }}"
+            AmiTags:
+              Name: !Ref ProjectDeploymentName
+            Description: Ami with agents and Java
+          Region: !Ref ParisRegion
+      Tags:
+        Name: !Ref ProjectDeploymentName
+    Type: AWS::ImageBuilder::DistributionConfiguration
+
+  EC2ImageBuilderImagePipeline:
+    Properties:
+      Name: !Sub '${ProjectDeploymentName}-pipeline'
+      Description: Pipeline for EC2 Image Builder
+      DistributionConfigurationArn: !GetAtt EC2ImageBuilderDistributionConfiguration.Arn
+      ImageRecipeArn: !GetAtt EC2ImageBuilderRecipe.Arn
+      InfrastructureConfigurationArn: !GetAtt EC2ImageBuilderInfrastructureConfiguration.Arn
+      Status: ENABLED
+      Tags:
+        Name: !Ref ProjectDeploymentName
+    Type: AWS::ImageBuilder::ImagePipeline
+
+  EC2Image:
+    Properties:
+      ImageRecipeArn: !GetAtt EC2ImageBuilderRecipe.Arn
+      InfrastructureConfigurationArn: !GetAtt EC2ImageBuilderInfrastructureConfiguration.Arn
+      EnhancedImageMetadataEnabled: false
+    Type: AWS::ImageBuilder::Image
+
+Outputs:
+  ImageArn:
+    Description: Reference to EC2 Image Builder Output Arn
+    Value: !GetAtt EC2Image.Arn
+  AmiId:
+    Description: Reference to EC2 Image Builder Output ImageId
+    Value: !GetAtt EC2Image.ImageId

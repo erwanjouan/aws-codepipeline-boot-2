@@ -1,0 +1,827 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: EKS cluster
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  DeploymentName:
+    Type: String
+  AwsLoadBalancerControllerServiceAccount:
+    Type: String
+    Description: AwsLoadBalancerController Service Account Name
+    Default: aws-load-balancer-controller
+  AwsLoadBalancerControllerRoleName:
+    Type: String
+    Description: AwsLoadBalancerController Role Name
+    Default: AmazonEKSLoadBalancerControllerRole
+  NumberOfReplicas:
+    Type: Number
+    Description: Number of container replicas
+    Default: 3
+  ArtifactBucket:
+    Type: String
+    Description: Artifact Bucket Name
+  EcrLambdaRegistry:
+    Type: String
+
+Mappings:
+  ServicePrincipalPartitionMap:
+    aws:
+      EC2: ec2.amazonaws.com
+      EKS: eks.amazonaws.com
+      EKSFargatePods: eks-fargate-pods.amazonaws.com
+    aws-cn:
+      EC2: ec2.amazonaws.com.cn
+      EKS: eks.amazonaws.com
+      EKSFargatePods: eks-fargate-pods.amazonaws.com
+    aws-us-gov:
+      EC2: ec2.amazonaws.com
+      EKS: eks.amazonaws.com
+      EKSFargatePods: eks-fargate-pods.amazonaws.com
+
+Resources:
+
+  ##########################
+  # Network
+  ##########################
+
+  VPC:
+    Properties:
+      CidrBlock: 192.168.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/VPC'
+    Type: AWS::EC2::VPC
+
+  SubnetPrivateEUWEST1A:
+    Properties:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 192.168.160.0/19
+      Tags:
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/SubnetPrivateEUWEST1A'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::Subnet
+
+  SubnetPrivateEUWEST1B:
+    Properties:
+      AvailabilityZone: eu-west-1b
+      CidrBlock: 192.168.96.0/19
+      Tags:
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/SubnetPrivateEUWEST1B'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::Subnet
+
+  SubnetPrivateEUWEST1C:
+    Properties:
+      AvailabilityZone: eu-west-1c
+      CidrBlock: 192.168.128.0/19
+      Tags:
+        - Key: kubernetes.io/role/internal-elb
+          Value: '1'
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/SubnetPrivateEUWEST1C'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::Subnet
+
+  SubnetPublicEUWEST1A:
+    Properties:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 192.168.64.0/19
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: kubernetes.io/role/elb # required for ELB deployment
+          Value: '1'
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/SubnetPublicEUWEST1A'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::Subnet
+
+  SubnetPublicEUWEST1B:
+    Properties:
+      AvailabilityZone: eu-west-1b
+      CidrBlock: 192.168.0.0/19
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: kubernetes.io/role/elb # required for ELB deployment
+          Value: '1'
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/SubnetPublicEUWEST1B'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::Subnet
+
+  SubnetPublicEUWEST1C:
+    Properties:
+      AvailabilityZone: eu-west-1c
+      CidrBlock: 192.168.32.0/19
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: kubernetes.io/role/elb # required for ELB deployment
+          Value: '1'
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/SubnetPublicEUWEST1C'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::Subnet
+
+  PrivateRouteTableEUWEST1A:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/PrivateRouteTableEUWEST1A'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::RouteTable
+
+  PrivateRouteTableEUWEST1B:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/PrivateRouteTableEUWEST1B'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::RouteTable
+
+  PrivateRouteTableEUWEST1C:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/PrivateRouteTableEUWEST1C'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::RouteTable
+
+  PublicRouteTable:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/PublicRouteTable'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::RouteTable
+
+  PublicSubnetRoute:
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+    DependsOn:
+      - VPCGatewayAttachment
+    Type: AWS::EC2::Route
+
+  RouteTableAssociationPrivateEUWEST1A:
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableEUWEST1A
+      SubnetId: !Ref SubnetPrivateEUWEST1A
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  RouteTableAssociationPrivateEUWEST1B:
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableEUWEST1B
+      SubnetId: !Ref SubnetPrivateEUWEST1B
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  RouteTableAssociationPrivateEUWEST1C:
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableEUWEST1C
+      SubnetId: !Ref SubnetPrivateEUWEST1C
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  RouteTableAssociationPublicEUWEST1A:
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SubnetPublicEUWEST1A
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  RouteTableAssociationPublicEUWEST1B:
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SubnetPublicEUWEST1B
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  RouteTableAssociationPublicEUWEST1C:
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SubnetPublicEUWEST1C
+    Type: AWS::EC2::SubnetRouteTableAssociation
+
+  InternetGateway:
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/InternetGateway'
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+    Type: AWS::EC2::VPCGatewayAttachment
+
+  NATGateway:
+    Properties:
+      AllocationId: !GetAtt
+        - NATIP
+        - AllocationId
+      SubnetId: !Ref SubnetPublicEUWEST1B
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/NATGateway'
+    Type: AWS::EC2::NatGateway
+
+  NATIP:
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/NATIP'
+    Type: AWS::EC2::EIP
+
+  NATPrivateSubnetRouteEUWEST1A:
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+      RouteTableId: !Ref PrivateRouteTableEUWEST1A
+    Type: AWS::EC2::Route
+
+  NATPrivateSubnetRouteEUWEST1B:
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+      RouteTableId: !Ref PrivateRouteTableEUWEST1B
+    Type: AWS::EC2::Route
+
+  NATPrivateSubnetRouteEUWEST1C:
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+      RouteTableId: !Ref PrivateRouteTableEUWEST1C
+    Type: AWS::EC2::Route
+
+  ##########################
+  # EKS Security Groups
+  ##########################
+
+  ClusterSharedNodeSecurityGroup:
+    Properties:
+      GroupDescription: Communication between all nodes in the cluster
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/ClusterSharedNodeSecurityGroup'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::SecurityGroup
+
+  IngressDefaultClusterToNodeSG:
+    Properties:
+      Description: >-
+        Allow managed and unmanaged nodes to communicate with each other (all
+        ports)
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: '-1'
+      GroupId: !Ref ClusterSharedNodeSecurityGroup
+      SourceSecurityGroupId: !GetAtt
+        - ControlPlane
+        - ClusterSecurityGroupId
+    Type: AWS::EC2::SecurityGroupIngress
+
+  IngressFromClusterToNodes:
+    Properties:
+      Description: Allows traffic from ControlPlane to Nodes (all ports)
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: '-1'
+      GroupId: !Ref ClusterSharedNodeSecurityGroup
+      SourceSecurityGroupId: !Ref ControlPlaneSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+
+  IngressInterNodeGroupSG:
+    Properties:
+      Description: Allow nodes to communicate with each other (all ports)
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: '-1'
+      GroupId: !Ref ClusterSharedNodeSecurityGroup
+      SourceSecurityGroupId: !Ref ClusterSharedNodeSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+
+  IngressNodeToDefaultClusterSG:
+    Properties:
+      Description: Allow unmanaged nodes to communicate with control plane (all ports)
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: '-1'
+      GroupId: !GetAtt
+        - ControlPlane
+        - ClusterSecurityGroupId
+      SourceSecurityGroupId: !Ref ClusterSharedNodeSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+
+  IngressAllNodeTrafficToControlPlaneSG:
+    Properties:
+      Description: Allows nodes to communicate with control plane (all ports)
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: '-1'
+      GroupId: !Ref ControlPlaneSecurityGroup
+      SourceSecurityGroupId: !Ref ClusterSharedNodeSecurityGroup
+    Type: AWS::EC2::SecurityGroupIngress
+
+  ControlPlaneSecurityGroup:
+    Properties:
+      GroupDescription: Communication between the control plane and worker nodegroups
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/ControlPlaneSecurityGroup'
+      VpcId: !Ref VPC
+    Type: AWS::EC2::SecurityGroup
+
+  ##########################
+  # EKS OIDC
+  ##########################
+
+  EksClusterOIDCProvider:
+    Properties:
+      ClientIdList:
+        - "sts.amazonaws.com"
+      ThumbprintList:
+        - "9e99a48a9960b14926bb7f3b02e22da2b0ab7280"
+      Url: !Sub
+        - "https://oidc.eks.${AWS::Region}.amazonaws.com/id/${Id}"
+        - Id: !Select [ 0, !Split [ '.', !Select [ 1, !Split [ '://', !GetAtt ControlPlane.Endpoint ] ] ] ]
+    Type: AWS::IAM::OIDCProvider
+
+  ##########################
+  # EKS IAM
+  ##########################
+
+  FargatePodExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Condition:
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:eks:${AWS::Region}:${AWS::AccountId}:fargateprofile/${ProjectDeploymentName}/*'
+            Effect: Allow
+            Principal:
+              Service:
+                - !FindInMap
+                  - ServicePrincipalPartitionMap
+                  - !Ref AWS::Partition
+                  - EKSFargatePods
+      ManagedPolicyArns:
+        - !Sub >-
+          arn:${AWS::Partition}:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy
+      Policies:
+        - PolicyName: AllowsEksPodToPushToCloudWatch
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: AllowsEksPodToPushToCloudWatch
+                Action:
+                  - logs:CreateLogStream
+                  - logs:CreateLogGroup
+                  - logs:DescribeLogStreams
+                  - logs:PutLogEvents
+                  - logs:PutRetentionPolicy
+                Effect: Allow
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/FargatePodExecutionRole'
+    Type: AWS::IAM::Role
+
+  PolicyCloudWatchMetrics:
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'cloudwatch:PutMetricData'
+            Effect: Allow
+            Resource: '*'
+      PolicyName: !Sub '${AWS::StackName}-PolicyCloudWatchMetrics'
+      Roles:
+        - !Ref EksClusterServiceRole
+    Type: AWS::IAM::Policy
+
+  PolicyELBPermissions:
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'ec2:DescribeAccountAttributes'
+              - 'ec2:DescribeAddresses'
+              - 'ec2:DescribeInternetGateways'
+            Effect: Allow
+            Resource: '*'
+      PolicyName: !Sub '${AWS::StackName}-PolicyELBPermissions'
+      Roles:
+        - !Ref EksClusterServiceRole
+    Type: AWS::IAM::Policy
+
+  EksClusterServiceRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service:
+                - !FindInMap
+                  - ServicePrincipalPartitionMap
+                  - !Ref AWS::Partition
+                  - EKS
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEKSClusterPolicy'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonEKSVPCResourceController'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/EksClusterServiceRole'
+    Type: AWS::IAM::Role
+
+  ##########################
+  # EKS Iam Role for Service Account (managed by OIDC) that creates load balancer
+  ##########################
+
+  # https://github.com/applerom/cloudformation-examples/blob/master/eks/eks-with-aws-load-balancer-controller-v2.yml
+
+  AwsLoadBalancerControllerRole:
+    Properties:
+      RoleName: !Ref AwsLoadBalancerControllerRoleName
+      AssumeRolePolicyDocument: !Sub
+        - |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${Id}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${Id}:aud": "sts.amazonaws.com",
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${Id}:sub": "system:serviceaccount:${Namespace}:${ServiceAccount}"
+                  }
+                }
+              }
+            ]
+          }
+        - Id: !Select [ 0, !Split [ '.', !Select [ 1, !Split [ '://', !GetAtt ControlPlane.Endpoint ] ] ] ]
+          Namespace: !Ref ProjectDeploymentName
+          ServiceAccount: !Ref AwsLoadBalancerControllerServiceAccount
+      Path: /
+      Policies:
+        ## https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+        - PolicyName: AWSLoadBalancerControllerIAMPolicy
+          PolicyDocument:
+            Statement:
+
+              - Effect: Allow
+                Action:
+                  - 'iam:CreateServiceLinkedRole' # potential security vulnerability! https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-reference-policy-checks.html#access-analyzer-reference-policy-checks-general-warning-create-slr-with-star-in-resource
+                  - 'ec2:DescribeAccountAttributes'
+                  - 'ec2:DescribeAddresses'
+                  - 'ec2:DescribeAvailabilityZones'
+                  - 'ec2:DescribeInternetGateways'
+                  - 'ec2:DescribeVpcs'                                            # security issue
+                  - 'ec2:DescribeSubnets'                                         # security issue
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:DescribeInstances'
+                  - 'ec2:DescribeNetworkInterfaces'
+                  - 'ec2:DescribeTags'                                            # security issue
+                  - 'ec2:GetCoipPoolUsage'
+                  - 'ec2:DescribeCoipPools'
+                  - 'elasticloadbalancing:DescribeLoadBalancers'
+                  - 'elasticloadbalancing:DescribeLoadBalancerAttributes'
+                  - 'elasticloadbalancing:DescribeListeners'
+                  - 'elasticloadbalancing:DescribeListenerCertificates'
+                  - 'elasticloadbalancing:DescribeSSLPolicies'
+                  - 'elasticloadbalancing:DescribeRules'
+                  - 'elasticloadbalancing:DescribeTargetGroups'
+                  - 'elasticloadbalancing:DescribeTargetGroupAttributes'
+                  - 'elasticloadbalancing:DescribeTargetHealth'
+                  - 'elasticloadbalancing:DescribeTags'
+                Resource: '*'
+
+              - Effect: Allow
+                Action:
+                  - 'cognito-idp:DescribeUserPoolClient'
+                  - 'acm:ListCertificates'
+                  - 'acm:DescribeCertificate'
+                  - 'iam:ListServerCertificates'
+                  - 'iam:GetServerCertificate'
+                  - 'waf-regional:GetWebACL'
+                  - 'waf-regional:GetWebACLForResource'
+                  - 'waf-regional:AssociateWebACL'
+                  - 'waf-regional:DisassociateWebACL'
+                  - 'wafv2:GetWebACL'                                             # security issue
+                  - 'wafv2:GetWebACLForResource'
+                  - 'wafv2:AssociateWebACL'
+                  - 'wafv2:DisassociateWebACL'
+                  - 'shield:GetSubscriptionState'
+                  - 'shield:DescribeProtection'
+                  - 'shield:CreateProtection'
+                  - 'shield:DeleteProtection'
+                Resource: '*'
+
+              - Effect: Allow
+                Action:
+                  - 'ec2:AuthorizeSecurityGroupIngress'
+                  - 'ec2:RevokeSecurityGroupIngress'
+                Resource: '*'
+
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateSecurityGroup'
+                Resource: '*'
+
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateTags'                                              # security warning
+                Resource: 'arn:aws:ec2:*:*:security-group/*'
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction: 'CreateSecurityGroup'
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateTags'                                              # security warning
+                  - 'ec2:DeleteTags'                                              # security warning
+                Resource: 'arn:aws:ec2:*:*:security-group/*'
+                Condition:
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'true'
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Effect: Allow
+                Action:
+                  - 'ec2:AuthorizeSecurityGroupIngress'
+                  - 'ec2:RevokeSecurityGroupIngress'
+                  - 'ec2:DeleteSecurityGroup'
+                Resource: '*'
+                Condition:
+                  'Null':
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:CreateLoadBalancer'
+                  - 'elasticloadbalancing:CreateTargetGroup'
+                Resource: '*'
+                Condition:
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:CreateListener'
+                  - 'elasticloadbalancing:DeleteListener'
+                  - 'elasticloadbalancing:CreateRule'
+                  - 'elasticloadbalancing:DeleteRule'
+                  - 'elasticloadbalancing:AddTags'
+                Resource: '*'
+
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:AddTags'
+                  - 'elasticloadbalancing:RemoveTags'
+                Resource:
+                  - 'arn:aws:elasticloadbalancing:*:*:targetgroup/*/*'
+                  - 'arn:aws:elasticloadbalancing:*:*:loadbalancer/net/*/*'
+                  - 'arn:aws:elasticloadbalancing:*:*:loadbalancer/app/*/*'
+                Condition:
+                  'Null':
+                    aws:RequestTag/elbv2.k8s.aws/cluster: 'true'
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:AddTags'
+                  - 'elasticloadbalancing:RemoveTags'
+                Resource:
+                  - 'arn:aws:elasticloadbalancing:*:*:listener/net/*/*/*'
+                  - 'arn:aws:elasticloadbalancing:*:*:listener/app/*/*/*'
+                  - 'arn:aws:elasticloadbalancing:*:*:listener-rule/net/*/*/*'
+                  - 'arn:aws:elasticloadbalancing:*:*:listener-rule/app/*/*/*'
+
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:ModifyLoadBalancerAttributes'
+                  - 'elasticloadbalancing:SetIpAddressType'
+                  - 'elasticloadbalancing:SetSecurityGroups'
+                  - 'elasticloadbalancing:SetSubnets'
+                  - 'elasticloadbalancing:DeleteLoadBalancer'
+                  - 'elasticloadbalancing:ModifyTargetGroup'
+                  - 'elasticloadbalancing:ModifyTargetGroupAttributes'
+                  - 'elasticloadbalancing:DeleteTargetGroup'
+                Resource: '*'
+                Condition:
+                  'Null':
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: 'false'
+
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:RegisterTargets'
+                  - 'elasticloadbalancing:DeregisterTargets'
+                Resource: 'arn:aws:elasticloadbalancing:*:*:targetgroup/*/*'
+
+              - Effect: Allow
+                Action:
+                  - 'elasticloadbalancing:SetWebAcl'
+                  - 'elasticloadbalancing:ModifyListener'
+                  - 'elasticloadbalancing:AddListenerCertificates'
+                  - 'elasticloadbalancing:RemoveListenerCertificates'
+                  - 'elasticloadbalancing:ModifyRule'
+                Resource: '*'
+
+              - Effect: Allow
+                Action:
+                  - 'eks:DescribeCluster'
+                Resource: !Sub 'arn:aws:eks:${AWS::Region}:${AWS::AccountId}:cluster/${ProjectDeploymentName}'
+
+              - Effect: Allow
+                Action:
+                  - 'ssm:GetParameter*'
+                Resource: '*'
+    Type: AWS::IAM::Role
+    ## end of AwsLoadBalancerControllerRole
+
+  ##########################
+  # EKS Fargate Profile
+  ##########################
+
+  FargateProfile:
+    Properties:
+      ClusterName: !Ref ControlPlane
+      FargateProfileName: !Sub '${ProjectDeploymentName}-fargate-profile'
+      PodExecutionRoleArn: !GetAtt FargatePodExecutionRole.Arn
+      Selectors:
+        - Namespace: default
+        - Namespace: kube-system
+        - Namespace: !Ref ProjectDeploymentName
+      Subnets: # Only private subnets are supported for Pods running on Fargate.
+        - !Ref SubnetPrivateEUWEST1B
+        - !Ref SubnetPrivateEUWEST1C
+        - !Ref SubnetPrivateEUWEST1A
+    Type: AWS::EKS::FargateProfile
+
+  ##########################
+  # EKS Cluster
+  ##########################
+
+  ControlPlane:
+    Properties:
+      Version: '1.28'
+      KubernetesNetworkConfig:
+        IpFamily: ipv4
+      Name: !Ref ProjectDeploymentName
+      ResourcesVpcConfig:
+        EndpointPrivateAccess: false
+        EndpointPublicAccess: true
+        SecurityGroupIds:
+          - !Ref ControlPlaneSecurityGroup
+        SubnetIds:
+          - !Ref SubnetPublicEUWEST1C
+          - !Ref SubnetPublicEUWEST1A
+          - !Ref SubnetPublicEUWEST1B
+          - !Ref SubnetPrivateEUWEST1B
+          - !Ref SubnetPrivateEUWEST1C
+          - !Ref SubnetPrivateEUWEST1A
+      RoleArn: !GetAtt
+        - EksClusterServiceRole
+        - Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}/ControlPlane'
+    Type: AWS::EKS::Cluster
+
+  ##########################
+  # Lambda image
+  ##########################
+
+  EksConfigureLambda:
+    Properties:
+      Description: Allows to perform additional configuration on cluster
+      Timeout: 600
+      PackageType: Image
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/CloudformationRole"
+      Environment:
+        Variables:
+          K8S_NAMESPACE: !Ref ProjectDeploymentName
+          PROJECT_DEPLOYMENT_NAME: !Ref ProjectDeploymentName
+          DEPLOYMENT_NAME: !Ref DeploymentName
+          AMAZON_EKS_LOAD_BALANCER_CONTROLLER_ROLE_ARN: !GetAtt AwsLoadBalancerControllerRole.Arn
+          IMAGE_TAG: !Ref ProjectVersion
+          NUMBER_OF_REPLICAS: !Ref NumberOfReplicas
+          AWS_ACCOUNT_ID: !Ref AWS::AccountId
+      Code:
+        ImageUri: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrLambdaRegistry}:${ProjectVersion}'
+    Type: AWS::Lambda::Function
+
+  CustomResourceEksConfigure:
+    Properties:
+      Description: Passes ProjectVersion to force custom resource activation on Update
+      ServiceToken: !GetAtt 'EksConfigureLambda.Arn'
+      ProjectVersion: !Ref ProjectVersion
+    DependsOn:
+      - FargateProfile
+    Type: Custom::EksConfigureLambda
+
+  ##########################
+  # Scaling
+  ##########################
+
+  EnableStressParameter:
+    Properties:
+      DataType: text
+      Name: /custom/stress
+      Type: String
+      Value: false
+      Description: enabled when true, disabled when setting any other value
+    Type: AWS::SSM::Parameter
+
+  ##########################
+  # Outputs
+  ##########################
+
+Outputs:
+  ARN:
+    Value: !GetAtt
+      - ControlPlane
+      - Arn
+    Export:
+      Name: !Sub '${AWS::StackName}::ARN'
+  CertificateAuthorityData:
+    Value: !GetAtt
+      - ControlPlane
+      - CertificateAuthorityData
+  ClusterSecurityGroupId:
+    Value: !GetAtt
+      - ControlPlane
+      - ClusterSecurityGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}::ClusterSecurityGroupId'
+  ClusterStackName:
+    Value: !Ref AWS::StackName
+  Endpoint:
+    Value: !GetAtt
+      - ControlPlane
+      - Endpoint
+    Export:
+      Name: !Sub '${AWS::StackName}::Endpoint'
+  FargatePodExecutionRoleARN:
+    Value: !GetAtt
+      - FargatePodExecutionRole
+      - Arn
+    Export:
+      Name: !Sub '${AWS::StackName}::FargatePodExecutionRoleARN'
+  FeatureNATMode:
+    Value: Single
+  SecurityGroup:
+    Value: !Ref ControlPlaneSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}::SecurityGroup'
+  ServiceRoleARN:
+    Value: !GetAtt
+      - EksClusterServiceRole
+      - Arn
+    Export:
+      Name: !Sub '${AWS::StackName}::ServiceRoleARN'
+  SharedNodeSecurityGroup:
+    Value: !Ref ClusterSharedNodeSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}::SharedNodeSecurityGroup'
+  SubnetsPrivate:
+    Value: !Join
+      - ','
+      - - !Ref SubnetPrivateEUWEST1B
+        - !Ref SubnetPrivateEUWEST1C
+        - !Ref SubnetPrivateEUWEST1A
+    Export:
+      Name: !Sub '${AWS::StackName}::SubnetsPrivate'
+  SubnetsPublic:
+    Value: !Join
+      - ','
+      - - !Ref SubnetPublicEUWEST1C
+        - !Ref SubnetPublicEUWEST1A
+        - !Ref SubnetPublicEUWEST1B
+    Export:
+      Name: !Sub '${AWS::StackName}::SubnetsPublic'
+  VPC:
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}::VPC'

@@ -1,0 +1,26 @@
+applicationName: ${PROJECT_DEPLOYMENT_NAME}
+deploymentGroupName: ${PROJECT_DEPLOYMENT_NAME}-blue-green
+# DeploymentConfigName for lambda
+# - CodeDeployDefault.LambdaCanary10Percent5Minutes : Shifts 10 percent of traffic in the first increment. The remaining 90 percent is deployed five minutes later.
+# - CodeDeployDefault.LambdaCanary10Percent10Minutes : Shifts 10 percent of traffic in the first increment. The remaining 90 percent is deployed 10 minutes later.
+# - CodeDeployDefault.LambdaCanary10Percent15Minutes : Shifts 10 percent of traffic in the first increment. The remaining 90 percent is deployed 15 minutes later.
+# - CodeDeployDefault.LambdaCanary10Percent30Minutes : Shifts 10 percent of traffic in the first increment. The remaining 90 percent is deployed 30 minutes later.
+# - CodeDeployDefault.LambdaLinear10PercentEvery1Minute : Shifts 10 percent of traffic every minute until all traffic is shifted.
+# - CodeDeployDefault.LambdaLinear10PercentEvery2Minutes : Shifts 10 percent of traffic every two minutes until all traffic is shifted.
+# - CodeDeployDefault.LambdaLinear10PercentEvery3Minutes : Shifts 10 percent of traffic every three minutes until all traffic is shifted.
+# - CodeDeployDefault.LambdaLinear10PercentEvery10Minutes	: Shifts 10 percent of traffic every 10 minutes until all traffic is shifted.
+# - CodeDeployDefault.LambdaAllAtOnce	: Shifts all traffic to the updated Lambda functions at once (default)
+deploymentConfigName: CodeDeployDefault.LambdaAllAtOnce
+revision:
+  revisionType: AppSpecContent
+  appSpecContent:
+    content: |
+      version: 0.0
+      Resources:
+        - myLambdaFunction:
+            Type: AWS::Lambda::Function
+            Properties:
+              Name: ${PROJECT_DEPLOYMENT_NAME}
+              Alias: alias
+              CurrentVersion: ${VERSION_ON_ALIAS}
+              TargetVersion: ${PUBLISHED_VERSION}

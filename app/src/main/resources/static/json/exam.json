@@ -1,0 +1,60 @@
+{
+  "id": "DOP-C02",
+  "name": "AWS Certified DevOps Engineer - Professional",
+  "domains": [
+    {
+      "name": "Domain 1: SDLC Automation",
+      "taskStatements": [
+        {
+          "title": "1.1 Implement CI/CD pipelines",
+          "knowledgeOf": [
+            {
+              "content": "Software development lifecycle (SDLC) concepts, phases, and models",
+              "urls": [
+                "https://aws.amazon.com/what-is/sdlc/#seo-faq-pairs#what-is-sdlc",
+                "https://aws.amazon.com/what-is/sdlc/#seo-faq-pairs#how-does-sdlc-work",
+                "https://aws.amazon.com/what-is/sdlc/#seo-faq-pairs#what-are-sdlc-models"
+              ]
+            },
+            {
+              "content": "Pipeline deployment patterns for single- and multi-account environments",
+              "urls": [
+                "https://aws.amazon.com/blogs/aws/new_deployment_pipelines_reference_architecture_and_-reference_implementations/",
+                "https://aws.amazon.com/blogs/architecture/simplifying-multi-account-ci-cd-deployments-using-aws-proton/",
+                "https://catalog.us-east-1.prod.workshops.aws/workshops/00bc829e-fd7c-4204-9da1-faea3cf8bd88/en-US",
+                "https://docs.aws.amazon.com/prescriptive-guidance/latest/patterns/use-aws-codecommit-and-aws-codepipeline-to-deploy-a-ci-cd-pipeline-in-multiple-aws-accounts.html"
+              ]
+            }
+          ],
+          "skillsIn": [
+            {
+              "content": "Configuring code, image, and artifact repositories",
+              "urls": [
+                "https://aws.amazon.com/blogs/devops/tag/aws-codecommit/",
+                "https://aws.amazon.com/blogs/devops/category/developer-tools/aws-code-artifact/",
+                "https://aws.amazon.com/blogs/containers/amazon-ecr-in-multi-account-and-multi-region-architectures/"
+              ]
+            },
+            {
+              "content": "Using version control to integrate pipelines with application environments"
+            },
+            {
+              "content": "Setting up build processes (for example, AWS CodeBuild)"
+            },
+            {
+              "content": "Managing build and deployment secrets (for example, AWS Secrets Manager, AWS Systems Manager Parameter Store)"
+            },
+            {
+              "content": "Determining appropriate deployment strategies (for example, AWS CodeDeploy)"
+            }
+          ]
+        },
+        {
+          "title": "1.2 Integrate automated testing into CI/CD pipelines",
+          "knowledgeOf": [],
+          "skillsIn": []
+        }
+      ]
+    }
+  ]
+}

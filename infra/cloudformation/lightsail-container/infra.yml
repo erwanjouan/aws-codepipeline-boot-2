@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: A Java SpringBoot application deployed on LightSail Container
+Parameters:
+  ProjectDeploymentName:
+    Type: String
+  DeploymentName:
+    Type: String
+  ProjectVersion:
+    Type: String
+  ApplicationPort:
+    Type: String
+    Default: 8080
+
+Resources:
+
+  LightSailContainer:
+    Properties:
+      IsDisabled: false
+      Power: small
+      PrivateRegistryAccess:
+        EcrImagePullerRole:
+          IsActive: true
+      Scale: 1
+      ServiceName: !Ref ProjectDeploymentName
+      ContainerServiceDeployment:
+        Containers:
+          - ContainerName: !Ref ProjectDeploymentName
+            Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ProjectDeploymentName}:${ProjectVersion}'
+            Ports:
+              - Port: !Ref ApplicationPort
+                Protocol: HTTP
+            Environment:
+              - Variable: SERVER_PORT
+                Value: !Ref ApplicationPort
+              - Variable: SPRING_PROFILES_ACTIVE
+                Value: !Ref DeploymentName
+              - Variable: PROJECT_DEPLOYMENT_NAME
+                Value: !Ref ProjectDeploymentName
+              - Variable: AWS_DEFAULT_REGION
+                Value: !Ref AWS::Region
+        PublicEndpoint:
+          ContainerName: !Ref ProjectDeploymentName
+          ContainerPort: !Ref ApplicationPort
+          HealthCheckConfig:
+            Path: "/actuator/health"
+            IntervalSeconds: 30
+    Type: AWS::Lightsail::Container
+
+  ##########################
+  # Update Ecr with EcrImagePullerRole
+  # https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-container-service-ecr-private-repo-access#ecr-private-repo-add-policy-no-policy
+  ##########################
+
+  UpdateEcrLambda:
+    Properties:
+      Handler: index.lambda_handler
+      Timeout: 60
+      Role: !GetAtt 'UpdateEcrExecutionRole.Arn'
+      Runtime: python3.9
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          import cfnresponse
+          import traceback
+          import logging
+
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          def lambda_handler(event, context):
+            responseData = {}
+            try:
+              logger.info('got event {}'.format(event))
+              if event['RequestType'] is not None and event['RequestType'] in ['Create']:
+                  props = event['ResourceProperties']
+                  ecrImagePullerRoleArn = props['EcrImagePullerRoleArn']
+                  logger.info('ecrImagePullerRoleArn {}'.format(ecrImagePullerRoleArn))
+                  repositoryName = props['RepositoryName']
+                  logger.info('repositoryName {}'.format(repositoryName))
+                  policy_json = {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                          {
+                              "Sid": "AllowLightsailPull-aws-codepipeline-boot-lightsail-container",
+                              "Effect": "Allow",
+                              "Principal": {
+                                  "AWS": ecrImagePullerRoleArn
+                              },
+                              "Action": [
+                                  "ecr:BatchGetImage",
+                                  "ecr:GetDownloadUrlForLayer"
+                              ]
+                          }
+                      ]
+                  }
+                  conv_policy_text = json.dumps(policy_json)
+                  ecr = boto3.client('ecr')
+                  # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecr/client/set_repository_policy.html
+                  response = ecr.set_repository_policy(
+                      repositoryName=repositoryName,
+                      policyText=conv_policy_text
+                  )
+                  logger.info('response {}'.format(response))
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, 'CustomResourcePhysicalID')
+            except Exception:
+              # Sending FAILED signal to CloudFormation
+              logger.info('Exception {}'.format(traceback.format_exc()))
+              cfnresponse.send(event, context, cfnresponse.FAILED, responseData, 'CustomResourcePhysicalID')
+    Type: AWS::Lambda::Function
+
+  UpdateEcrExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+            Condition: { }
+      Path: /
+      Policies:
+        - PolicyName: lambda-parameter-store
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:SetRepositoryPolicy
+                  - ecr:DescribeRepositories
+                  - ecr:DeleteRepositoryPolicy
+                  - ecr:GetRepositoryPolicy
+                Resource: !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${ProjectDeploymentName}"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    Type: AWS::IAM::Role
+
+  UpdateEcrCustomResource:
+    Properties:
+      ServiceToken: !GetAtt 'UpdateEcrLambda.Arn'
+      EcrImagePullerRoleArn: !GetAtt LightSailContainer.PrivateRegistryAccess.EcrImagePullerRole.PrincipalArn
+      RepositoryName: !Ref ProjectDeploymentName
+    Type: Custom::UpdateParameterStoreLambda
+
+Outputs:
+  EcrImagePullerRoleAtn:
+    Value: !GetAtt LightSailContainer.PrivateRegistryAccess.EcrImagePullerRole.PrincipalArn
+  WatchServiceEndpoint:
+    Value: !Sub
+      - "${ContainerUrl}api"
+      - ContainerUrl: !GetAtt 'LightSailContainer.Url'
