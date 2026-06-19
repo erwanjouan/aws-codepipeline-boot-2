@@ -19,7 +19,7 @@ export class CodePipelineRole extends Construct {
                     }),
                     new PolicyStatement({
                         effect: Effect.ALLOW,
-                        actions: ['codestar-connections:UseConnection'],
+                        actions: ['codecommit:*'],
                         resources: ['*'],
                     }),
                     new PolicyStatement({
