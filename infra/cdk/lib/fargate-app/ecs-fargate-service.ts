@@ -1,14 +1,17 @@
-import { Cluster, ContainerImage, FargateService } from 'aws-cdk-lib/aws-ecs';
+import { RemovalPolicy } from 'aws-cdk-lib';
+import { Cluster, ContainerImage, FargateService, LogDrivers } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancedFargateService } from 'aws-cdk-lib/aws-ecs-patterns';
 import { Vpc } from 'aws-cdk-lib/aws-ec2';
+import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import { Constants } from '../constants';
 import { TaskExecutionRole } from './task-execution-role';
+import { TaskRole } from './task-role';
 
 export class EcsFargateService extends Construct {
     service: FargateService;
 
-    constructor(scope: Construct, id: string, taskExecutionRole: TaskExecutionRole) {
+    constructor(scope: Construct, id: string, taskExecutionRole: TaskExecutionRole, taskRole: TaskRole) {
         super(scope, id);
 
         const vpc = new Vpc(this, 'Vpc', { maxAzs: 2 });
@@ -16,6 +19,13 @@ export class EcsFargateService extends Construct {
         const cluster = new Cluster(this, 'Cluster', {
             clusterName: Constants.FARGATE_CLUSTER_NAME,
             vpc,
+            enableFargateCapacityProviders: true,
+        });
+
+        const logGroup = new LogGroup(this, 'LogGroup', {
+            logGroupName: `/ecs/fargate/${Constants.FARGATE_CLUSTER_NAME}`,
+            retention: RetentionDays.THREE_MONTHS,
+            removalPolicy: RemovalPolicy.DESTROY,
         });
 
         // Placeholder image; the pipeline replaces it on first run via imagedefinitions.json.
@@ -26,14 +36,23 @@ export class EcsFargateService extends Construct {
         const albService = new ApplicationLoadBalancedFargateService(this, 'Service', {
             cluster,
             serviceName: Constants.FARGATE_SERVICE_NAME,
-            memoryLimitMiB: 2048,
-            desiredCount: 1,
-            cpu: 1024,
+            cpu: 512,
+            memoryLimitMiB: 1024,
+            desiredCount: 2,
+            capacityProviderStrategies: [
+                { capacityProvider: 'FARGATE', base: 2, weight: 1 },
+                { capacityProvider: 'FARGATE_SPOT', base: 0, weight: 4 },
+            ],
             taskImageOptions: {
                 image: ContainerImage.fromRegistry('nginx:alpine'),
                 containerName: Constants.FARGATE_CONTAINER_NAME,
                 executionRole: taskExecutionRole.role,
+                taskRole: taskRole.role,
                 containerPort: 8080,
+                logDriver: LogDrivers.awsLogs({
+                    logGroup,
+                    streamPrefix: 'ecs-fargate',
+                }),
                 command: [
                     '/bin/sh', '-c',
                     "printf 'server{listen 8080;location /actuator/health{return 200;}}' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'",
