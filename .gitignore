@@ -11,3 +11,4 @@
 **/rpdk.log
 **/.k8s_ingress_service.yml
 **/node_modules
+**/.env

@@ -20,11 +20,7 @@ export class CodeBuildRole extends Construct {
                     ],
                     resources: ['arn:aws:logs:*'],
                 }),
-                new PolicyStatement({
-                    effect: Effect.ALLOW,
-                    actions: ['codecommit:GitPull'],
-                    resources: ['*'],
-                }),
+
                 new PolicyStatement({
                     effect: Effect.ALLOW,
                     actions: [
