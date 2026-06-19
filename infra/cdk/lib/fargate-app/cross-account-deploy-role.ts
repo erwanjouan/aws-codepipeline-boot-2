@@ -1,12 +1,11 @@
 import { AccountPrincipal, Effect, ManagedPolicy, PolicyStatement, Role } from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import { Constants } from '../constants';
-import { TaskExecutionRole } from './task-execution-role';
 
 export class CrossAccountDeployRole extends Construct {
     role: Role;
 
-    constructor(scope: Construct, id: string, taskExecutionRole: TaskExecutionRole) {
+    constructor(scope: Construct, id: string) {
         super(scope, id);
 
         const policy = new ManagedPolicy(this, 'Policy', {
@@ -24,11 +23,16 @@ export class CrossAccountDeployRole extends Construct {
                     ],
                     resources: ['*'],
                 }),
-                // PassRole so CodePipeline can pass the task execution role to ECS
+                // PassRole for any role passed to ECS (execution role + auto-generated task role)
                 new PolicyStatement({
                     effect: Effect.ALLOW,
                     actions: ['iam:PassRole'],
-                    resources: [taskExecutionRole.role.roleArn],
+                    resources: ['*'],
+                    conditions: {
+                        StringEqualsIfExists: {
+                            'iam:PassedToService': 'ecs-tasks.amazonaws.com',
+                        },
+                    },
                 }),
                 // Read pipeline artifacts from CICD account S3 bucket
                 new PolicyStatement({

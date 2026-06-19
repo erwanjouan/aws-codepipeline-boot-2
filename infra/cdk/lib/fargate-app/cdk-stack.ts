@@ -14,7 +14,7 @@ export class FargateAppStack extends Stack {
 
         const taskExecutionRole = new TaskExecutionRole(this, 'taskExecutionRole');
         const taskRole = new TaskRole(this, 'taskRole');
-        new CrossAccountDeployRole(this, 'crossAccountDeployRole', taskExecutionRole);
+        new CrossAccountDeployRole(this, 'crossAccountDeployRole');
         const ecsFargateService = new EcsFargateService(this, 'ecsFargateService', taskExecutionRole, taskRole);
         new EcsAutoscaling(this, 'ecsAutoscaling', ecsFargateService.service);
         new StressParameter(this, 'stressParameter');
