@@ -1,12 +1,12 @@
 import { Artifact, Pipeline } from 'aws-cdk-lib/aws-codepipeline';
-import { CodeBuildAction, CodeStarConnectionsSourceAction, EcsDeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
+import { CodeBuildAction, CodeCommitSourceAction, EcsDeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { Role } from 'aws-cdk-lib/aws-iam';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import { Construct } from 'constructs';
 import { Constants } from '../constants';
 import { ArtifactBucket } from './artifact-bucket';
 import { CodeBuildApp } from './code-build-app';
-import { GithubSource } from './github-source';
+import { CodeCommit } from './code-commit';
 import { CodePipelineRole } from './code-pipeline-role';
 
 export class CodePipeline extends Construct {
@@ -14,7 +14,7 @@ export class CodePipeline extends Construct {
         scope: Construct,
         id: string,
         artifactBucket: ArtifactBucket,
-        githubSource: GithubSource,
+        codeCommit: CodeCommit,
         codeBuildApp: CodeBuildApp,
         pipelineRole: CodePipelineRole,
     ) {
@@ -23,13 +23,11 @@ export class CodePipeline extends Construct {
         const sourceArtifact = new Artifact('source');
         const buildOutput = new Artifact('build');
 
-        const sourceAction = new CodeStarConnectionsSourceAction({
-            actionName: 'GitHub',
-            owner: githubSource.owner,
-            repo: githubSource.repo,
-            branch: githubSource.branch,
-            connectionArn: githubSource.connectionArn,
+        const sourceAction = new CodeCommitSourceAction({
+            actionName: 'CodeCommit',
+            repository: codeCommit.repo,
             output: sourceArtifact,
+            branch: 'cdk',
         });
 
         const buildAction = new CodeBuildAction({
