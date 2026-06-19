@@ -49,6 +49,10 @@ export class EcsFargateService extends Construct {
                 executionRole: taskExecutionRole.role,
                 taskRole: taskRole.role,
                 containerPort: 8080,
+                environment: {
+                    SPRING_PROFILES_ACTIVE: "alb-ecs-fargate",
+                    PROJECT_DEPLOYMENT_NAME: "alb-ecs-fargate",
+                },
                 logDriver: LogDrivers.awsLogs({
                     logGroup,
                     streamPrefix: 'ecs-fargate',
