@@ -14,12 +14,12 @@ export class DistributionConfiguration extends Construct {
             organizationalUnitArns: [organizationalUnitArn]
         }
 
-        const amiDistributionConfigurationName = `${Constants.PROJECT_NAME}-${architecture.label}-${Constants.DEFAULT_REGION}-{{ imagebuilder:buildDate }}`
+        const amiDistributionConfigurationName = `${process.env.PROJECT_NAME}-${architecture.label}-${Constants.DEFAULT_REGION}-{{ imagebuilder:buildDate }}`
 
         const amiDistributionConfiguration: CfnDistributionConfiguration.AmiDistributionConfigurationProperty = {
             name: amiDistributionConfigurationName,
             amiTags: {
-                "Name": Constants.PROJECT_NAME,
+                "Name": `${process.env.PROJECT_NAME}`,
                 "Architecture": architecture.label,
                 "BaseOs": "al2023"
             },
@@ -33,10 +33,10 @@ export class DistributionConfiguration extends Construct {
         }
 
         const distributionConfiguration = new CfnDistributionConfiguration(this, 'distributionConfiguration', {
-            name: Constants.PROJECT_NAME,
+            name: `${process.env.PROJECT_NAME}`,
             distributions: [distProps],
             tags: {
-                "Name": Constants.PROJECT_NAME,
+                "Name": `${process.env.PROJECT_NAME}`,
                 "Architecture": architecture.label,
                 "BaseOs": "al2023"
             }

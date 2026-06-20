@@ -1,7 +1,4 @@
-import { ArnPrincipal } from "aws-cdk-lib/aws-iam"
-
 export abstract class Constants {
-    static readonly PROJECT_NAME='aws-codepipeline-boot'
     static readonly DEFAULT_REGION = process.env.AWS_REGION!
     static readonly DEFAULT_ACCOUNT = process.env.CICD_ACCOUNT_ID!
     static readonly WORKLOAD_ACCOUNT_ID = process.env.PROD_ACCOUNT_ID!

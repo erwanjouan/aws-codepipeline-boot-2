@@ -44,8 +44,8 @@ export class ParameterStoreUpdater extends Construct {
       uuid: 'f7d4f730-4ee1-11e8-9c2d-fa7ae01bbebd',
       code: new lambda.InlineCode(fs.readFileSync(path.join('lib', 'ec2-image-builder','lambda','custom-resource-handler.py'), { encoding: 'utf-8' })),
       handler: 'index.main',
-      timeout: cdk.Duration.seconds(300),
-      runtime: lambda.Runtime.PYTHON_3_9,
+      timeout: cdk.Duration.seconds(30),
+      runtime: lambda.Runtime.PYTHON_3_12,
       role: role
     });
 

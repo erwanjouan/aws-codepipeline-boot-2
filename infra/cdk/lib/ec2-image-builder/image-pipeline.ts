@@ -6,18 +6,22 @@ export class ImagePipeline extends Construct {
     constructor(scope: Construct, id: string, distributionConfigurationArn: string, imageRecipeArn: string,
         infrastructureConfigurationArn: string) {
 
-        super(scope, id)
+        super(scope, id);
 
-        const imagePipeline = new CfnImagePipeline(this, 'imagePipeline', {
-            name: `${Constants.PROJECT_NAME}-pipeline`,
+        new CfnImagePipeline(this, 'imagePipeline', {
+            name: `${process.env.PROJECT_NAME}-pipeline`,
             description: "Pipeline for EC2 Image Builder",
             distributionConfigurationArn: distributionConfigurationArn,
             imageRecipeArn: imageRecipeArn,
             infrastructureConfigurationArn: infrastructureConfigurationArn,
             status: "ENABLED",
+            schedule: {
+                scheduleExpression: 'cron(0 0 ? * SUN *)',
+                pipelineExecutionStartCondition: 'EXPRESSION_MATCH_ONLY'
+            },
             tags: {
-                'Name': Constants.PROJECT_NAME
+                'Name': `${process.env.PROJECT_NAME}`
             }
-        })
+        });
     }
 }

@@ -1,6 +1,6 @@
 deploy:
 	export $$(cat .env | xargs) && cdk synth \
-            --app "npx ts-node --prefer-ts-exts bin/alb-ecs-fargate/cdk.ts" \
+            --app "npx ts-node --prefer-ts-exts bin/$${DEPLOYMENT_NAME}/cdk.ts" \
             --debug true \
-            fargate-cicd \
+            $${DEPLOYMENT_NAME} \
             --exclusively

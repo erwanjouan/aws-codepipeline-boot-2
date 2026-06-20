@@ -12,15 +12,15 @@ export class BinariesComponent extends Construct  {
         super(scope, id);
         const data = fs.readFileSync(path.join('lib', 'ec2-image-builder', 'template', 'binaries-component.yml'), { encoding: 'utf-8' })
         const cfnComponent = new CfnComponent(this, 'binariesComponent', {
-            name: Constants.PROJECT_NAME + '-binaries',
+            name: `${process.env.PROJECT_NAME}-binaries`,
             changeDescription: "Installs base agents",
             platform: "Linux",
             description: "Installs base agents",
             data: data,
             version: "1.0.0",
-            supportedOsVersions: ["Amazon Linux 2"],
+            supportedOsVersions: ["Amazon Linux 2023"],
             tags: {
-                'Name': Constants.PROJECT_NAME
+                'Name': `${process.env.PROJECT_NAME}`
             }
         })
         this.arn = cfnComponent.attrArn

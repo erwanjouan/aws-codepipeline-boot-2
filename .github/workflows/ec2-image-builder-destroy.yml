@@ -1,4 +1,4 @@
-name: destroy-alb-ecs-fargate
+name: ec2-image-builder-destroy
 
 on:
   workflow_dispatch:
@@ -16,13 +16,13 @@ env:
   AWS_ORGANIZATION_UNIT_ID: ${{ secrets.AWS_ORGANIZATION_UNIT_ID }}
   AWS_GITHUB_CONNECTION_ARN: ${{ secrets.AWS_GITHUB_CONNECTION_ARN }}
   PROJECT_NAME:  'aws-codepipeline-boot-2'
-  DEPLOYMENT_NAME: 'alb-ecs-fargate'
-  PROJECT_DEPLOYMENT_NAME: 'aws-codepipeline-boot-2-alb-ecs-fargate'
+  DEPLOYMENT_NAME: 'ec2-image-builder'
+  PROJECT_DEPLOYMENT_NAME: 'aws-codepipeline-boot-2-ec2-image-builder'
 
 jobs:
   destroy-fargate-cicd:
     environment: production
-    name: Destroy cicd (CICD account)
+    name: Destroy (CICD account)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -52,45 +52,7 @@ jobs:
         working-directory: infra/cdk
         run: |
           cdk destroy \
-            --app "npx ts-node --prefer-ts-exts bin/alb-ecs-fargate/cdk.ts" \
+            --app "npx ts-node --prefer-ts-exts bin/${{ env.DEPLOYMENT_NAME }}/cdk.ts" \
             --force \
-            fargate-cicd \
-            --exclusively
-
-  destroy-fargate-app:
-    environment: production
-    name: Destroy app (PROD account)
-    runs-on: ubuntu-latest
-    needs: destroy-fargate-cicd
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials (PROD account)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.PROD_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ vars.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: infra/cdk/package-lock.json
-
-      - name: Install dependencies
-        working-directory: infra/cdk
-        run: npm ci
-
-      - name: Install AWS CDK
-        run: npm install -g aws-cdk
-
-      - name: Destroy app
-        working-directory: infra/cdk
-        run: |
-          cdk destroy \
-            --app "npx ts-node --prefer-ts-exts bin/alb-ecs-fargate/cdk.ts" \
-            --force \
-            fargate-app \
+            ${{ env.DEPLOYMENT_NAME }} \
             --exclusively
