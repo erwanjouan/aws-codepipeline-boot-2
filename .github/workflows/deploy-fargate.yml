@@ -17,7 +17,7 @@ env:
   AWS_GITHUB_CONNECTION_ARN: ${{ secrets.AWS_GITHUB_CONNECTION_ARN }}
   PROJECT_NAME:  'aws-codepipeline-boot-2'
   DEPLOYMENT_NAME: 'alb-ecs-fargate'
-  PROJECT_DEPLOYMENT_NAME: ${{ env.PROJECT_NAME }}-${{ env.DEPLOYMENT_NAME }}
+  PROJECT_DEPLOYMENT_NAME: 'aws-codepipeline-boot-2-alb-ecs-fargate'
 
 jobs:
   deploy-fargate-app:
