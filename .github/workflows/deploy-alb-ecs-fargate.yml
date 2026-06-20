@@ -1,4 +1,4 @@
-name: Deploy Fargate Stacks
+name: deploy-alb-ecs-fargate
 
 on:
   workflow_dispatch:

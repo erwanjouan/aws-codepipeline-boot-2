@@ -1,4 +1,4 @@
-name: Destroy Fargate Stacks
+name: destroy-alb-ecs-fargate
 
 on:
   workflow_dispatch:

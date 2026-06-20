@@ -24,15 +24,16 @@ export class CodeBuildApp extends Construct {
                     ],
                 },
                 build: {
-                    commands: ['mvn package -f $PROJECT_POM'],
-                },
-                post_build: {
                     commands: [
                         'cd app/',
                         `docker build -t ${imageRegistry.repositoryUri} .`,
                         `docker tag ${imageRegistry.repositoryUri}:latest ${imageRegistry.repositoryUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION`,
                         `docker push --all-tags ${imageRegistry.repositoryUri}`,
                         'cd ..',
+                    ],
+                },
+                post_build: {
+                    commands: [
                         // Generate imagedefinitions.json for ECS deploy action
                         `printf '[{"name":"${process.env.PROJECT_DEPLOYMENT_NAME}","imageUri":"%s"}]' "${imageRegistry.repositoryUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION" > imagedefinitions.json`,
                     ],
