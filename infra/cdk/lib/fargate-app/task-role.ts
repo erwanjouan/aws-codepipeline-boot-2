@@ -35,7 +35,7 @@ export class TaskRole extends Construct {
             effect: Effect.ALLOW,
             actions: ['ecs:ListServices', 'ecs:DescribeServices'],
             resources: [
-                `arn:aws:ecs:${region}:${account}:service/${Constants.FARGATE_CLUSTER_NAME}/${Constants.FARGATE_SERVICE_NAME}`,
+                `arn:aws:ecs:${region}:${account}:service/${process.env.PROJECT_DEPLOYMENT_NAME}/${process.env.PROJECT_DEPLOYMENT_NAME}`,
             ],
         }));
 

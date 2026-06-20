@@ -17,13 +17,13 @@ export class EcsFargateService extends Construct {
         const vpc = new Vpc(this, 'Vpc', { maxAzs: 2 });
 
         const cluster = new Cluster(this, 'Cluster', {
-            clusterName: Constants.FARGATE_CLUSTER_NAME,
+            clusterName: process.env.PROJECT_DEPLOYMENT_NAME,
             vpc,
             enableFargateCapacityProviders: true,
         });
 
         const logGroup = new LogGroup(this, 'LogGroup', {
-            logGroupName: `/ecs/fargate/${Constants.FARGATE_CLUSTER_NAME}`,
+            logGroupName: `/ecs/fargate/${process.env.PROJECT_DEPLOYMENT_NAME}`,
             retention: RetentionDays.THREE_MONTHS,
             removalPolicy: RemovalPolicy.DESTROY,
         });
@@ -35,7 +35,7 @@ export class EcsFargateService extends Construct {
         // so the ALB health check passes before the real app is deployed.
         const albService = new ApplicationLoadBalancedFargateService(this, 'Service', {
             cluster,
-            serviceName: Constants.FARGATE_SERVICE_NAME,
+            serviceName: process.env.PROJECT_DEPLOYMENT_NAME,
             cpu: 512,
             memoryLimitMiB: 1024,
             desiredCount: 2,
@@ -45,13 +45,15 @@ export class EcsFargateService extends Construct {
             ],
             taskImageOptions: {
                 image: ContainerImage.fromRegistry('nginx:alpine'),
-                containerName: Constants.FARGATE_CONTAINER_NAME,
+                containerName: process.env.PROJECT_DEPLOYMENT_NAME,
                 executionRole: taskExecutionRole.role,
                 taskRole: taskRole.role,
                 containerPort: 8080,
                 environment: {
-                    SPRING_PROFILES_ACTIVE: "alb-ecs-fargate",
-                    PROJECT_DEPLOYMENT_NAME: "alb-ecs-fargate",
+                    SPRING_PROFILES_ACTIVE: process.env.DEPLOYMENT_NAME!,
+                    PROJECT_NAME: process.env.PROJECT_NAME!,
+                    DEPLOYMENT_NAME: process.env.DEPLOYMENT_NAME!,
+                    PROJECT_DEPLOYMENT_NAME: process.env.PROJECT_DEPLOYMENT_NAME!,
                 },
                 logDriver: LogDrivers.awsLogs({
                     logGroup,

@@ -9,8 +9,5 @@ export abstract class Constants {
     static readonly ORGANIZATION_UNIT_ID = process.env.AWS_ORGANIZATION_UNIT_ID!
     static readonly PARAMETER_STORE_AMI = "/custom/ami/al2023"
     static readonly ARTIFACT_NAME = "app.jar"
-    static readonly FARGATE_CLUSTER_NAME = 'fargate-cluster'
-    static readonly FARGATE_SERVICE_NAME = 'fargate-service'
-    static readonly FARGATE_CONTAINER_NAME = 'app'
     static readonly FARGATE_CROSS_ACCOUNT_ROLE_NAME = 'fargate-cross-account-deploy-role'
   }

@@ -54,9 +54,9 @@ export class CodePipeline extends Construct {
         // at synthesis time to generate the CloudFormation action configuration.
         const ecsService = {
             env: { account: Constants.WORKLOAD_ACCOUNT_ID, region: Constants.DEFAULT_REGION },
-            serviceName: Constants.FARGATE_SERVICE_NAME,
+            serviceName: process.env.PROJECT_DEPLOYMENT_NAME,
             cluster: {
-                clusterName: Constants.FARGATE_CLUSTER_NAME,
+                clusterName: process.env.PROJECT_DEPLOYMENT_NAME,
             },
         } as unknown as ecs.IBaseService;
 

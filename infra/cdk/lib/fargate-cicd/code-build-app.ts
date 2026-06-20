@@ -34,7 +34,7 @@ export class CodeBuildApp extends Construct {
                         `docker push --all-tags ${imageRegistry.repositoryUri}`,
                         'cd ..',
                         // Generate imagedefinitions.json for ECS deploy action
-                        `printf '[{"name":"${Constants.FARGATE_CONTAINER_NAME}","imageUri":"%s"}]' "${imageRegistry.repositoryUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION" > imagedefinitions.json`,
+                        `printf '[{"name":"${process.env.PROJECT_DEPLOYMENT_NAME}","imageUri":"%s"}]' "${imageRegistry.repositoryUri}:$CODEBUILD_RESOLVED_SOURCE_VERSION" > imagedefinitions.json`,
                     ],
                 },
             },
