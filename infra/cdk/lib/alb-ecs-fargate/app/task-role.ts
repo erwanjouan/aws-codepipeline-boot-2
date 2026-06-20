@@ -1,7 +1,7 @@
 import { Effect, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Constants } from '../constants';
+import { Constants } from '../../constants';
 
 export class TaskRole extends Construct {
     role: Role;

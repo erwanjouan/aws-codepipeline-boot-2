@@ -4,7 +4,7 @@ import { ApplicationLoadBalancedFargateService } from 'aws-cdk-lib/aws-ecs-patte
 import { Vpc } from 'aws-cdk-lib/aws-ec2';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { Constants } from '../constants';
+import { Constants } from '../../constants';
 import { TaskExecutionRole } from './task-execution-role';
 import { TaskRole } from './task-role';
 

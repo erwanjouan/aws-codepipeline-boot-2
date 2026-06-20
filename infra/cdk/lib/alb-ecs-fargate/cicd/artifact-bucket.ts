@@ -2,7 +2,7 @@ import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { AccountPrincipal, Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { RemovalPolicy } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Constants } from '../constants';
+import { Constants } from '../../constants';
 import { ArtifactKmsKey } from './artifact-kms-key';
 
 export class ArtifactBucket extends Construct {

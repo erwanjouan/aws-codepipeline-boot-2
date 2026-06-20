@@ -1,6 +1,6 @@
 import { Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { CustomStackProps } from '../utils/custom-stack-props';
+import { CustomStackProps } from '../../utils/custom-stack-props';
 import { ArtifactKmsKey } from './artifact-kms-key';
 import { ArtifactBucket } from './artifact-bucket';
 import { ImageRegistry } from './image-registry';

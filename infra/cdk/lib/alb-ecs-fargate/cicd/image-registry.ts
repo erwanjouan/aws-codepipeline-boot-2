@@ -2,7 +2,7 @@ import { Repository } from 'aws-cdk-lib/aws-ecr';
 import { AccountPrincipal, Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { RemovalPolicy } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Constants } from '../constants';
+import { Constants } from '../../constants';
 
 export class ImageRegistry extends Construct {
     repositoryUri: string;

@@ -1,7 +1,7 @@
 import { Key } from 'aws-cdk-lib/aws-kms';
 import { AccountPrincipal, Effect, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
-import { Constants } from '../constants';
+import { Constants } from '../../constants';
 
 export class ArtifactKmsKey extends Construct {
     key: Key;

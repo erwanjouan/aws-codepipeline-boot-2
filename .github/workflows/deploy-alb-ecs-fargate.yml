@@ -22,7 +22,7 @@ env:
 jobs:
   deploy-fargate-app:
     environment: production
-    name: Deploy fargate-app (PROD account)
+    name: Deploy app (PROD account)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,17 +48,18 @@ jobs:
       - name: Install AWS CDK
         run: npm install -g aws-cdk
 
-      - name: Deploy fargate-app
+      - name: Deploy app
         working-directory: infra/cdk
         run: |
           cdk deploy \
+            --app "npx ts-node --prefer-ts-exts bin/alb-ecs-fargate/cdk.ts" \
             --require-approval never \
             fargate-app \
             --exclusively
 
   deploy-fargate-cicd:
     environment: production
-    name: Deploy fargate-cicd (CICD account)
+    name: Deploy cicd (CICD account)
     runs-on: ubuntu-latest
     needs: deploy-fargate-app
     steps:
@@ -85,10 +86,11 @@ jobs:
       - name: Install AWS CDK
         run: npm install -g aws-cdk
 
-      - name: Deploy fargate-cicd
+      - name: Deploy cicd
         working-directory: infra/cdk
         run: |
           cdk deploy \
+            --app "npx ts-node --prefer-ts-exts bin/alb-ecs-fargate/cdk.ts" \
             --require-approval never \
             fargate-cicd \
             --exclusively

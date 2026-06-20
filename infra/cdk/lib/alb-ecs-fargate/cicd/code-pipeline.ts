@@ -3,7 +3,7 @@ import { CodeBuildAction, CodeStarConnectionsSourceAction, EcsDeployAction } fro
 import { Role } from 'aws-cdk-lib/aws-iam';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import { Construct } from 'constructs';
-import { Constants } from '../constants';
+import { Constants } from '../../constants';
 import { ArtifactBucket } from './artifact-bucket';
 import { CodeBuildApp } from './code-build-app';
 import { GithubSource } from './github-source';

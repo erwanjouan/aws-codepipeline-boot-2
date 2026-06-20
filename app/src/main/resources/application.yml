@@ -1,5 +1,5 @@
-display_color: "#194878" # blue
-#display_color: "#2b712b" # green
+#display_color: "#194878" # blue
+display_color: "#2b712b" # green
 
 server:
   error:

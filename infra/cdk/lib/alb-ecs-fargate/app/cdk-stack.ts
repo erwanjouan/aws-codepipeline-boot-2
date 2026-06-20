@@ -1,6 +1,6 @@
 import { Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { CustomStackProps } from '../utils/custom-stack-props';
+import { CustomStackProps } from '../../utils/custom-stack-props';
 import { TaskExecutionRole } from './task-execution-role';
 import { TaskRole } from './task-role';
 import { CrossAccountDeployRole } from './cross-account-deploy-role';

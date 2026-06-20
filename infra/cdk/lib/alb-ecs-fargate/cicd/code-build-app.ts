@@ -1,7 +1,7 @@
 import { BuildSpec, Cache, ComputeType, LinuxBuildImage, PipelineProject } from 'aws-cdk-lib/aws-codebuild';
 import { LogGroup } from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
-import { Constants } from '../constants';
+import { Constants } from '../../constants';
 import { ArtifactBucket } from './artifact-bucket';
 import { CodeBuildRole } from './code-build-role';
 import { ImageRegistry } from './image-registry';
