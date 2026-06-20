@@ -1,7 +1,6 @@
 package bluegreen.conf.eks;
 
 import bluegreen.conf.AwsConfiguration;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.management.OperatingSystemMXBean;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
@@ -36,11 +35,6 @@ public class EksConfiguration implements AwsConfiguration {
     public AppsV1Api appsV1Api() throws IOException {
         final ApiClient client = Config.defaultClient();
         return new AppsV1Api(client);
-    }
-
-    @Bean
-    public ObjectMapper objectMapper() {
-        return new ObjectMapper();
     }
 
     @Bean

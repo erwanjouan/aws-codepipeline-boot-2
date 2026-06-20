@@ -5,7 +5,6 @@ import bluegreen.model.exam.Domain;
 import bluegreen.model.exam.Exam;
 import bluegreen.model.exam.SubTask;
 import bluegreen.model.exam.TaskStatement;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
@@ -46,9 +45,6 @@ public class DynamoDbDaoImpl implements DynamoDbDao {
 
     @Autowired
     private DynamoDbClient dynamoDbClient;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Autowired
     private ExamProperties examProperties;

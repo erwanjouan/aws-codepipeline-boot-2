@@ -1,7 +1,6 @@
 package bluegreen.conf.ecs;
 
 import bluegreen.conf.AwsConfiguration;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.management.OperatingSystemMXBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -40,11 +39,6 @@ public class EcsFargateAlbConfiguration implements AwsConfiguration {
         return SsmClient.builder()
                 .region(Region.of(this.defaultRegion))
                 .build();
-    }
-
-    @Bean
-    public ObjectMapper objectMapper() {
-        return new ObjectMapper();
     }
 
     @Bean

@@ -10,7 +10,7 @@ phases:
           commands:
             - sudo su
             - yum upgrade -y
-            - yum install -y java-17-amazon-corretto-headless
+            - yum install -y java-21-amazon-corretto-headless
             - yum update -y aws-cfn-bootstrap
   - name: validate
     steps:

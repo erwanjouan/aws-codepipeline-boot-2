@@ -4,7 +4,8 @@ import bluegreen.dao.dynamodb.DynamoDbDao;
 import bluegreen.dao.dynamodb.DynamoDbDaoImpl;
 import bluegreen.model.exam.SubTask;
 import bluegreen.model.exam.TaskStatement;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -43,8 +44,9 @@ import static bluegreen.model.Constant.TASK_STATEMENTS_TABLE;
 
 @Configuration
 @Profile(DYNAMODB_LAMBDA_PROFILE)
-@Slf4j
 public class DynamoDbClientConfiguration {
+
+    private static final Logger log = LoggerFactory.getLogger(DynamoDbClientConfiguration.class);
 
     @Autowired
     private ApplicationContext applicationContext;

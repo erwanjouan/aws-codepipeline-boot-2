@@ -3,7 +3,8 @@ package bluegreen.service.opsworks;
 import bluegreen.model.ControlTable;
 import bluegreen.model.OpsWorksStacksControlDto;
 import bluegreen.service.WatchAwsService;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Profile;
@@ -22,8 +23,9 @@ import static bluegreen.model.Constant.OPSWORKS_STACKS_PROFILE;
 
 @Service
 @Profile(OPSWORKS_STACKS_PROFILE)
-@Slf4j
 public class WatchOpsWorksStacksService implements WatchAwsService<OpsWorksStacksControlDto> {
+
+    private static final Logger log = LoggerFactory.getLogger(WatchOpsWorksStacksService.class);
 
     @Autowired
     @Qualifier(OPSWORKS_STACKS_CLIENT)

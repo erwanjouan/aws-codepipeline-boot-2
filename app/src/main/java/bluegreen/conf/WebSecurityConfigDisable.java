@@ -1,15 +1,20 @@
 package bluegreen.conf;
 
-import org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
 
 import static bluegreen.model.Constant.NON_COGNITO_SOCIAL_IDP_PROFILE;
 
 @Configuration
-@EnableAutoConfiguration(exclude = {SecurityAutoConfiguration.class, ManagementWebSecurityAutoConfiguration.class})
 @Profile(NON_COGNITO_SOCIAL_IDP_PROFILE)
 public class WebSecurityConfigDisable {
+
+    @Bean
+    public SecurityFilterChain permitAllSecurityFilterChain(final HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
 }

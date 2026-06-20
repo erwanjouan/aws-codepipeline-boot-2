@@ -2,9 +2,15 @@
 display_color: "#2b712b" # green
 
 server:
+  port: 8080
   error:
     include-stacktrace: always
     include-exception: true
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.cloud.function.serverless.web.ServerlessAutoConfiguration
 
 management:
   endpoints:

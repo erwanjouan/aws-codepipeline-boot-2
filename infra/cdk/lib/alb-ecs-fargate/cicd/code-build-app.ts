@@ -58,7 +58,7 @@ export class CodeBuildApp extends Construct {
             role: codeBuildRole.role,
             environment: {
                 computeType: ComputeType.SMALL,
-                buildImage: LinuxBuildImage.STANDARD_6_0,
+                buildImage: LinuxBuildImage.STANDARD_7_0,
                 privileged: true,
             },
             environmentVariables: {

@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.web.context.annotation.RequestScope;
 import software.amazon.awssdk.services.lambda.LambdaClient;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 import static bluegreen.model.Constant.API_GW_LAMBDA_PROFILE;
 import static bluegreen.model.Constant.DYNAMODB_LAMBDA_PROFILE;

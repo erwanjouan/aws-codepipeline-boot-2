@@ -1,8 +1,9 @@
 package bluegreen.service.ecs;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -10,8 +11,9 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-@Slf4j
 public class EcsTaskMetaDataService {
+
+    private static final Logger log = LoggerFactory.getLogger(EcsTaskMetaDataService.class);
 
     public static final String DEFAULT_TASKID = "unknown";
     public static final String DEFAULT_TASK_ARN = "unknown";
