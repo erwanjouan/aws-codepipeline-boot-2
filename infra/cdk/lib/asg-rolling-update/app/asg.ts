@@ -18,7 +18,7 @@ export class Asg extends Construct {
 
         const projectName = process.env.PROJECT_NAME!;
         const deploymentName = process.env.DEPLOYMENT_NAME!;
-        const cicdAccountId = Constants.DEFAULT_ACCOUNT;
+        const cicdAccountId = process.env.CICD_ACCOUNT_ID;
         const artifactDomain = projectName;
         const artifactRepo = deploymentName;
 

@@ -67,14 +67,14 @@ export class CodeBuildRole extends Construct {
                     effect: Effect.ALLOW,
                     actions: ['ssm:GetParameter'],
                     resources: [
-                        `arn:aws:ssm:*:${Constants.DEFAULT_ACCOUNT}:parameter/custom/ami/al2023/*`,
+                        `arn:aws:ssm:*:${process.env.CICD_ACCOUNT_ID}:parameter/custom/ami/al2023/*`,
                     ],
                 }),
                 new PolicyStatement({
                     effect: Effect.ALLOW,
                     actions: ['sts:AssumeRole'],
                     resources: [
-                        `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.ASG_CROSS_ACCOUNT_ROLE_NAME}`,
+                        `arn:aws:iam::${process.env.PROD_ACCOUNT_ID}:role/${Constants.ASG_CROSS_ACCOUNT_ROLE_NAME}`,
                     ],
                 }),
             ],

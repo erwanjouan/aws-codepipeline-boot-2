@@ -21,7 +21,7 @@ export class CodeArtifactRepo extends Construct {
                 statements: [
                     new PolicyStatement({
                         effect: Effect.ALLOW,
-                        principals: [new AccountPrincipal(Constants.WORKLOAD_ACCOUNT_ID)],
+                        principals: [new AccountPrincipal(process.env.PROD_ACCOUNT_ID)],
                         actions: [
                             'codeartifact:GetAuthorizationToken',
                             'codeartifact:GetRepositoryEndpoint',

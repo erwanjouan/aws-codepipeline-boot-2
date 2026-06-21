@@ -55,7 +55,7 @@ export class CrossAccountDeployRole extends Construct {
         // a chicken-and-egg validation failure when the pipeline role doesn't exist yet.
         this.role = new Role(this, 'Role', {
             roleName: Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME,
-            assumedBy: new AccountPrincipal(Constants.DEFAULT_ACCOUNT),
+            assumedBy: new AccountPrincipal(process.env.CICD_ACCOUNT_ID),
             managedPolicies: [policy],
         });
     }

@@ -17,7 +17,7 @@ export class ArtifactKmsKey extends Construct {
         // Allow PROD account to decrypt artifacts
         this.key.addToResourcePolicy(new PolicyStatement({
             effect: Effect.ALLOW,
-            principals: [new AccountPrincipal(Constants.WORKLOAD_ACCOUNT_ID)],
+            principals: [new AccountPrincipal(process.env.PROD_ACCOUNT_ID)],
             actions: ['kms:Decrypt', 'kms:DescribeKey'],
             resources: ['*'],
         }));

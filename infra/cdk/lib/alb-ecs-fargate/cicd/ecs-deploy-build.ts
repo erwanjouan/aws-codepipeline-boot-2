@@ -12,8 +12,8 @@ export class EcsDeployBuild extends Construct {
 
         const logGroup = new LogGroup(this, 'LogGroup');
         const clusterName = process.env.PROJECT_DEPLOYMENT_NAME!;
-        const region = Constants.DEFAULT_REGION;
-        const crossAccountRoleArn = `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME}`;
+        const region = process.env.CDK_DEFAULT_REGION;
+        const crossAccountRoleArn = `arn:aws:iam::${process.env.PROD_ACCOUNT_ID}:role/${Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME}`;
 
         const buildSpec = BuildSpec.fromObject({
             version: '0.2',

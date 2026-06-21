@@ -29,7 +29,7 @@ export class Ec2Architecture {
 
     getCustomAmiParameterStoreArn(): string {
         let parameterStoreName = this.getCustomAmiParameterStoreName();
-        return `arn:aws:ssm:${process.env.AWS_REGION}:${process.env.CICD_ACCOUNT_ID}:parameter${parameterStoreName}`
+        return `arn:aws:ssm:${process.env.CDK_DEFAULT_REGION}:${process.env.CICD_ACCOUNT_ID}:parameter${parameterStoreName}`
     }
 
     getBaseAmiParameterStore(): string {

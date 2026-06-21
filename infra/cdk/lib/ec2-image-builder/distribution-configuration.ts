@@ -8,13 +8,13 @@ export class DistributionConfiguration extends Construct {
     constructor(scope: Construct, id: string, architecture:Ec2Architecture) {
         super(scope, id)
 
-        const organizationalUnitArn = `arn:aws:organizations::${Constants.DEFAULT_ACCOUNT}:ou/${Constants.ORGANIZATION_ID}/${Constants.ORGANIZATION_UNIT_ID}`;
+        const organizationalUnitArn = `arn:aws:organizations::${process.env.CICD_ACCOUNT_ID}:ou/${Constants.ORGANIZATION_ID}/${Constants.ORGANIZATION_UNIT_ID}`;
 
         const lcProperty: CfnDistributionConfiguration.LaunchPermissionConfigurationProperty = {
             organizationalUnitArns: [organizationalUnitArn]
         }
 
-        const amiDistributionConfigurationName = `${process.env.PROJECT_NAME}-${architecture.label}-${Constants.DEFAULT_REGION}-{{ imagebuilder:buildDate }}`
+        const amiDistributionConfigurationName = `${process.env.PROJECT_NAME}-${architecture.label}-${process.env.CDK_DEFAULT_REGION}-{{ imagebuilder:buildDate }}`
 
         const amiDistributionConfiguration: CfnDistributionConfiguration.AmiDistributionConfigurationProperty = {
             name: amiDistributionConfigurationName,
@@ -28,7 +28,7 @@ export class DistributionConfiguration extends Construct {
         }
 
         const distProps: CfnDistributionConfiguration.DistributionProperty = {
-            region: Constants.DEFAULT_REGION,
+            region: process.env.CDK_DEFAULT_REGION!,
             amiDistributionConfiguration: amiDistributionConfiguration
         }
 

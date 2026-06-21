@@ -1,7 +1,4 @@
 export abstract class Constants {
-    static readonly DEFAULT_REGION = process.env.AWS_REGION!
-    static readonly DEFAULT_ACCOUNT = process.env.CICD_ACCOUNT_ID!
-    static readonly WORKLOAD_ACCOUNT_ID = process.env.PROD_ACCOUNT_ID!
     static readonly ORGANIZATION_ID = process.env.AWS_ORGANIZATION_ID!
     static readonly ORGANIZATION_UNIT_ID = process.env.AWS_ORGANIZATION_UNIT_ID!
     static readonly ARTIFACT_NAME = "app.jar"

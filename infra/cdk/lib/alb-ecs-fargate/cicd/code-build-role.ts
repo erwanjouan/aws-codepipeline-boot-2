@@ -61,7 +61,7 @@ export class CodeBuildRole extends Construct {
                     effect: Effect.ALLOW,
                     actions: ['sts:AssumeRole'],
                     resources: [
-                        `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME}`,
+                        `arn:aws:iam::${process.env.PROD_ACCOUNT_ID}:role/${Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME}`,
                     ],
                 }),
             ],

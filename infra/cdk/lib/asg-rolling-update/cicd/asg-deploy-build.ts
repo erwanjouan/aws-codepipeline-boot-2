@@ -12,8 +12,8 @@ export class AsgDeployBuild extends Construct {
 
         const logGroup = new LogGroup(this, 'LogGroup');
         const asgName = process.env.PROJECT_DEPLOYMENT_NAME!;
-        const region = Constants.DEFAULT_REGION;
-        const crossAccountRoleArn = `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.ASG_CROSS_ACCOUNT_ROLE_NAME}`;
+        const region = process.env.CDK_DEFAULT_REGION;
+        const crossAccountRoleArn = `arn:aws:iam::${process.env.PROD_ACCOUNT_ID}:role/${Constants.ASG_CROSS_ACCOUNT_ROLE_NAME}`;
 
         const amiParamName = `/custom/ami/al2023/${process.env.TARGET_ARCHITECTURE}`;
 

@@ -32,7 +32,7 @@ export class CrossAccountDeployRole extends Construct {
 
         new Role(this, 'Role', {
             roleName: Constants.ASG_CROSS_ACCOUNT_ROLE_NAME,
-            assumedBy: new AccountPrincipal(Constants.DEFAULT_ACCOUNT),
+            assumedBy: new AccountPrincipal(process.env.CICD_ACCOUNT_ID),
             managedPolicies: [policy],
         });
     }

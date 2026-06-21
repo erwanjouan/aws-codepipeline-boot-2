@@ -20,7 +20,7 @@ export class ArtifactBucket extends Construct {
 
         this.bucket.addToResourcePolicy(new PolicyStatement({
             effect: Effect.ALLOW,
-            principals: [new AccountPrincipal(Constants.WORKLOAD_ACCOUNT_ID)],
+            principals: [new AccountPrincipal(process.env.PROD_ACCOUNT_ID)],
             actions: ['s3:Get*', 's3:List*'],
             resources: [this.bucket.bucketArn, `${this.bucket.bucketArn}/*`],
         }));
