@@ -11,7 +11,8 @@ export class DistributionConfiguration extends Construct {
         const organizationalUnitArn = `arn:aws:organizations::${process.env.CICD_ACCOUNT_ID}:ou/${Constants.ORGANIZATION_ID}/${Constants.ORGANIZATION_UNIT_ID}`;
 
         const lcProperty: CfnDistributionConfiguration.LaunchPermissionConfigurationProperty = {
-            organizationalUnitArns: [organizationalUnitArn]
+            organizationalUnitArns: [organizationalUnitArn],
+            userIds: [process.env.PROD_ACCOUNT_ID!],
         }
 
         const amiDistributionConfigurationName = `${process.env.PROJECT_NAME}-${architecture.label}-${process.env.CDK_DEFAULT_REGION}-{{ imagebuilder:buildDate }}`

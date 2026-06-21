@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { FargateAppStack } from '../../lib/alb-ecs-fargate/app/cdk-stack';
-import { FargateCicdStack } from '../../lib/alb-ecs-fargate/cicd/cdk-stack';
-import { Constants } from '../../lib/constants';
+import {FargateAppStack} from '../../lib/alb-ecs-fargate/app/cdk-stack';
+import {FargateCicdStack} from '../../lib/alb-ecs-fargate/cicd/cdk-stack';
 
 const app = new cdk.App();
 
@@ -14,18 +13,18 @@ const app = new cdk.App();
 
 const fargateApp = 'fargate-app';
 new FargateAppStack(app, fargateApp, {
-  stackName: fargateApp,
-  env: {
-    account: Constants.WORKLOAD_ACCOUNT_ID,
-    region: Constants.DEFAULT_REGION,
-  }
+    stackName: fargateApp,
+    env: {
+        account: process.env.PROD_ACCOUNT_ID,
+        region: process.env.CDK_DEFAULT_REGION,
+    }
 })
 
 const fargateCicd = 'fargate-cicd';
 new FargateCicdStack(app, fargateCicd, {
-  stackName: fargateCicd,
-  env: {
-    account: Constants.DEFAULT_ACCOUNT,
-    region: Constants.DEFAULT_REGION,
-  }
+    stackName: fargateCicd,
+    env: {
+        account: process.env.CICD_ACCOUNT_ID,
+        region: process.env.CDK_DEFAULT_REGION,
+    }
 })
