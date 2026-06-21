@@ -34,7 +34,7 @@ export class CodeBuildApp extends Construct {
                 },
                 build: {
                     commands: [
-                        'mvn deploy -f app/pom.xml -s /tmp/settings.xml --no-transfer-progress',
+                        'mvn deploy -f app/pom.xml -s /tmp/settings.xml --no-transfer-progress -PpublishingCodeArtifact -DaltDeploymentRepository=codeartifact::default::${CODEARTIFACT_REPOSITORY_URL}',
                     ],
                 },
                 post_build: {
