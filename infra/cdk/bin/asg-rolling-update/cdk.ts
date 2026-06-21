@@ -16,8 +16,8 @@ const asgApp = 'asg-rolling-app';
 new AsgRollingAppStack(app, asgApp, {
     stackName: asgApp,
     env: {
-        account: Constants.WORKLOAD_ACCOUNT_ID,
-        region: Constants.DEFAULT_REGION,
+        account: process.env.PROD_ACCOUNT_ID,
+        region: process.env.CDK_DEFAULT_REGION,
     },
 });
 
@@ -25,7 +25,7 @@ const asgCicd = 'asg-rolling-cicd';
 new AsgRollingCicdStack(app, asgCicd, {
     stackName: asgCicd,
     env: {
-        account: Constants.DEFAULT_ACCOUNT,
-        region: Constants.DEFAULT_REGION,
+        account: process.env.CICD_ACCOUNT_ID,
+        region: process.env.CDK_DEFAULT_REGION,
     },
 });
