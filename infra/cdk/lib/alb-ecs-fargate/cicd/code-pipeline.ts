@@ -1,11 +1,9 @@
 import { Artifact, Pipeline } from 'aws-cdk-lib/aws-codepipeline';
-import { CodeBuildAction, CodeStarConnectionsSourceAction, EcsDeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
-import { Role } from 'aws-cdk-lib/aws-iam';
-import * as ecs from 'aws-cdk-lib/aws-ecs';
+import { CodeBuildAction, CodeStarConnectionsSourceAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { Construct } from 'constructs';
-import { Constants } from '../../constants';
 import { ArtifactBucket } from './artifact-bucket';
 import { CodeBuildApp } from './code-build-app';
+import { EcsDeployBuild } from './ecs-deploy-build';
 import { GithubSource } from './github-source';
 import { CodePipelineRole } from './code-pipeline-role';
 
@@ -16,6 +14,7 @@ export class CodePipeline extends Construct {
         artifactBucket: ArtifactBucket,
         githubSource: GithubSource,
         codeBuildApp: CodeBuildApp,
+        ecsDeployBuild: EcsDeployBuild,
         pipelineRole: CodePipelineRole,
     ) {
         super(scope, id);
@@ -37,34 +36,14 @@ export class CodePipeline extends Construct {
             project: codeBuildApp.project,
             input: sourceArtifact,
             outputs: [buildOutput],
-            // Use the pipeline role directly so CDK does not create a separate
-            // auto-generated action role that lacks codebuild:StartBuild.
             role: pipelineRole.role,
         });
 
-        // Cross-account role in PROD that CodePipeline will assume to call ECS
-        const crossAccountRole = Role.fromRoleArn(
-            this,
-            'CrossAccountRole',
-            `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME}`,
-        );
-
-        // Minimal IBaseService representation of the cross-account ECS service.
-        // EcsDeployAction only needs cluster.clusterName, serviceName, and env.account
-        // at synthesis time to generate the CloudFormation action configuration.
-        const ecsService = {
-            env: { account: Constants.WORKLOAD_ACCOUNT_ID, region: Constants.DEFAULT_REGION },
-            serviceName: process.env.PROJECT_DEPLOYMENT_NAME,
-            cluster: {
-                clusterName: process.env.PROJECT_DEPLOYMENT_NAME,
-            },
-        } as unknown as ecs.IBaseService;
-
-        const deployAction = new EcsDeployAction({
+        const deployAction = new CodeBuildAction({
             actionName: 'DeployToFargate',
-            service: ecsService,
+            project: ecsDeployBuild.project,
             input: buildOutput,
-            role: crossAccountRole,
+            role: pipelineRole.role,
         });
 
         new Pipeline(this, 'Pipeline', {

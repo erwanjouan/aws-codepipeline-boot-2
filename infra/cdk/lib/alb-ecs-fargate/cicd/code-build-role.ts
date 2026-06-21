@@ -1,5 +1,6 @@
 import { Effect, ManagedPolicy, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import { Constants } from '../../constants';
 import { ArtifactKmsKey } from './artifact-kms-key';
 
 export class CodeBuildRole extends Construct {
@@ -55,6 +56,13 @@ export class CodeBuildRole extends Construct {
                         'kms:DescribeKey',
                     ],
                     resources: [kmsKey.key.keyArn],
+                }),
+                new PolicyStatement({
+                    effect: Effect.ALLOW,
+                    actions: ['sts:AssumeRole'],
+                    resources: [
+                        `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME}`,
+                    ],
                 }),
             ],
         });

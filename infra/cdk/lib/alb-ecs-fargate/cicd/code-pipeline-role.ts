@@ -1,6 +1,5 @@
 import { Effect, IRole, ManagedPolicy, PolicyDocument, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
-import { Constants } from '../../constants';
 
 export class CodePipelineRole extends Construct {
     role: IRole;
@@ -21,27 +20,6 @@ export class CodePipelineRole extends Construct {
                         effect: Effect.ALLOW,
                         actions: ['codestar-connections:UseConnection'],
                         resources: ['*'],
-                    }),
-                    new PolicyStatement({
-                        effect: Effect.ALLOW,
-                        actions: [
-                            'ecs:DescribeServices',
-                            'ecs:DescribeTaskDefinition',
-                            'ecs:RegisterTaskDefinition',
-                            'ecs:UpdateService',
-                            'ecs:ListTasks',
-                            'ecs:DescribeTasks',
-                            'ecs:TagResource',
-                        ],
-                        resources: ['*'],
-                    }),
-                    // Assume cross-account role in PROD to deploy to ECS
-                    new PolicyStatement({
-                        effect: Effect.ALLOW,
-                        actions: ['sts:AssumeRole'],
-                        resources: [
-                            `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.FARGATE_CROSS_ACCOUNT_ROLE_NAME}`,
-                        ],
                     }),
                     new PolicyStatement({
                         effect: Effect.ALLOW,

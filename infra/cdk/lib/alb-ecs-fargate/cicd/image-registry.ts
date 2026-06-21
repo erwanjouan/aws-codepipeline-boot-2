@@ -11,7 +11,7 @@ export class ImageRegistry extends Construct {
         super(scope, id);
 
         const repo = new Repository(this, 'Repo', {
-            repositoryName: `${Constants.PROJECT_NAME}-fargate`,
+            repositoryName: `${process.env.PROJECT_DEPLOYMENT_NAME}`,
             removalPolicy: RemovalPolicy.DESTROY,
             emptyOnDelete: true,
         });

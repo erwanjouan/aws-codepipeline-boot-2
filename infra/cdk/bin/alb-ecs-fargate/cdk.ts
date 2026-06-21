@@ -15,7 +15,6 @@ const app = new cdk.App();
 const fargateApp = 'fargate-app';
 new FargateAppStack(app, fargateApp, {
   stackName: fargateApp,
-  deploymentName: fargateApp,
   env: {
     account: Constants.WORKLOAD_ACCOUNT_ID,
     region: Constants.DEFAULT_REGION,
@@ -25,7 +24,6 @@ new FargateAppStack(app, fargateApp, {
 const fargateCicd = 'fargate-cicd';
 new FargateCicdStack(app, fargateCicd, {
   stackName: fargateCicd,
-  deploymentName: fargateCicd,
   env: {
     account: Constants.DEFAULT_ACCOUNT,
     region: Constants.DEFAULT_REGION,

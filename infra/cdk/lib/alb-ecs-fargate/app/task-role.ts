@@ -26,8 +26,8 @@ export class TaskRole extends Construct {
             effect: Effect.ALLOW,
             actions: ['s3:*'],
             resources: [
-                `arn:aws:s3:::${Constants.PROJECT_NAME}`,
-                `arn:aws:s3:::${Constants.PROJECT_NAME}/*`,
+                `arn:aws:s3:::${process.env.PROJECT_NAME}`,
+                `arn:aws:s3:::${process.env.PROJECT_NAME}/*`,
             ],
         }));
 
