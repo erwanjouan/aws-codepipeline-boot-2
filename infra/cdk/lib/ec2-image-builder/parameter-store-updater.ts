@@ -5,7 +5,6 @@ import { Construct } from 'constructs';
 
 import fs = require('fs');
 import { Effect, ManagedPolicy, PolicyStatement, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
-import { Constants } from '../constants';
 import { Ec2Architecture } from '../utils/ec2-architecture';
 const path = require('path');
 
@@ -25,7 +24,7 @@ export class ParameterStoreUpdater extends Construct {
                 "ssm:GetParameterHistory",
                 "ssm:GetParameter"
             ],
-            resources: [architecture.getParameterStoreArn()]
+            resources: [architecture.getCustomAmiParameterStoreArn()]
         })]
     })
 
@@ -55,7 +54,7 @@ export class ParameterStoreUpdater extends Construct {
       serviceToken: provider.serviceToken,
       properties: {
         'AmiId': amiId,
-        'ParameterStoreName': `${architecture.getParameterStoreName()}`
+        'ParameterStoreName': `${architecture.getCustomAmiParameterStoreName()}`
       },
     });
 

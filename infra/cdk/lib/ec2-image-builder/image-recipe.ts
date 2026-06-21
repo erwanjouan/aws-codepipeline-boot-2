@@ -13,8 +13,8 @@ export class ImageRecipe extends Construct {
         super(scope, id);
 
         const region = cdk.Stack.of(this).region;
-        const parameterStoreName = `/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-${architecture.label}`;
-        const parentImage = ssm.StringParameter.valueForStringParameter(this, parameterStoreName);
+        let baseAmiParameterStore = architecture.getBaseAmiParameterStore();
+        const parentImage = ssm.StringParameter.valueForStringParameter(this, baseAmiParameterStore);
 
         const cfnImageRecipe = new CfnImageRecipe(this, 'imageRecipe', {
             name: `${process.env.PROJECT_NAME}`,
