@@ -11,7 +11,7 @@ Arrow legend:
 - `═══►` cross-account STS role assumption
 
 ```mermaid
-graph LR
+graph TB
     subgraph cicd ["☁️  Management Account · CICD  (fargate-cicd stack)"]
         gh(("GitHub"))
         conn["CodeStar Connection"]
