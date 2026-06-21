@@ -3,6 +3,7 @@ package bluegreen.model;
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration;
 import software.amazon.awssdk.services.ecs.model.DeploymentController;
 
+import java.util.List;
 import java.util.Objects;
 
 public class EcsFargateAlbControlDto {
@@ -13,6 +14,7 @@ public class EcsFargateAlbControlDto {
     private DeploymentController deploymentController;
     private String stats;
     private Integer cpu;
+    private List<String> events;
 
     private EcsFargateAlbControlDto(Builder b) {
         this.taskArn = b.taskArn;
@@ -22,6 +24,7 @@ public class EcsFargateAlbControlDto {
         this.deploymentController = b.deploymentController;
         this.stats = b.stats;
         this.cpu = b.cpu;
+        this.events = b.events;
     }
 
     public static Builder builder() {
@@ -36,6 +39,7 @@ public class EcsFargateAlbControlDto {
         private DeploymentController deploymentController;
         private String stats;
         private Integer cpu;
+        private List<String> events;
 
         public Builder taskArn(String taskArn) {
             this.taskArn = taskArn;
@@ -69,6 +73,11 @@ public class EcsFargateAlbControlDto {
 
         public Builder cpu(Integer cpu) {
             this.cpu = cpu;
+            return this;
+        }
+
+        public Builder events(List<String> events) {
+            this.events = events;
             return this;
         }
 
@@ -131,6 +140,14 @@ public class EcsFargateAlbControlDto {
 
     public void setCpu(Integer cpu) {
         this.cpu = cpu;
+    }
+
+    public List<String> getEvents() {
+        return events;
+    }
+
+    public void setEvents(List<String> events) {
+        this.events = events;
     }
 
     @Override

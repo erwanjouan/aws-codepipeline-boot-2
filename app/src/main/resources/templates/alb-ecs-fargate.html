@@ -1,72 +1,137 @@
 <!DOCTYPE HTML>
 <html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
 <head>
-    <meta http-equiv="refresh" content="3">
-
-    <title>Blue Green App</title>
+    <title>ECS Fargate</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 
-    <!-- bootstrap -->
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}"/>
     <script th:src="@{/webjars/bootstrap/5.3.0/js/bootstrap.min.js}"></script>
 
-    <!-- jquery -->
-    <script th:src="@{/webjars/jquery/3.4.1/jquery.min.js}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 
-    <!-- jquery datatable-->
-    <link rel="stylesheet" th:href="@{/webjars/datatables/1.10.19/css/jquery.dataTables.min.css}"/>
-    <script th:src="@{/webjars/datatables/1.10.19/js/jquery.dataTables.min.js}"></script>
-
+    <style>
+        #diagram-container svg { max-width: 100%; height: auto; }
+    </style>
 </head>
-
 <body>
 
-<div class="container-fluid p-5 text-center">
-    <h4>ECS Fargate</h4>
-    <h5>Rolling deployment</h5>
-</div>
+<div class="container-fluid p-4">
 
-<div class="container ml-1">
-    <!-- From instance-->
-    <div class="mt-2">
-        <h5>From ECS Task</h5>
-        <span>
-            <b>Arn = </b>[[${ecsFargateAlbControlDto.taskArn}]]<br/>
-            <b>Cpu = </b>[[${ecsFargateAlbControlDto.cpu}]] %
-        </span>
-    </div>
+    <h4>ECS Fargate <small class="text-muted fw-light">rolling deployment</small></h4>
 
-    <!-- Deployed instance-->
-    <div class="mt-5">
-        <h5>Deployed Tasks</h5>
-        <table id="sample" class="table table-bordered table-hover table-striped">
-            <thead>
-            <tr class="headings">
-                <th th:each="header: ${ecsFargateAlbControlDto.controlTable.headers}" class="column-title"
-                    th:text="${header}" th:style="|background: ${color}|"/>
-            </tr>
-            </thead>
-            <tbody>
-            <tr class="even pointer" th:each="row: ${ecsFargateAlbControlDto.controlTable.rows}" id="tablerow">
-                <td th:each="header: ${ecsFargateAlbControlDto.controlTable.headers}" th:text="${row.get(header)}"/>
-            </tr>
-            </tbody>
-        </table>
-        <div/>
-    </div>
+    <p class="small mb-1">
+        Serving task: <code id="task-arn" th:text="${ecsFargateAlbControlDto.taskArn}">…</code>
+        &nbsp;·&nbsp; CPU <b id="cpu" th:text="${ecsFargateAlbControlDto.cpu}">?</b>%
+    </p>
+    <p class="text-muted small mb-3">
+        Controller: <b th:text="${ecsFargateAlbControlDto.deploymentController.type}">?</b>
+        &nbsp;|&nbsp;
+        minHealthy=<b th:text="${ecsFargateAlbControlDto.deploymentConfiguration.minimumHealthyPercent}">?</b>%
+        &nbsp;
+        maxPercent=<b th:text="${ecsFargateAlbControlDto.deploymentConfiguration.maximumPercent}">?</b>%
+        &nbsp;·&nbsp;
+        <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-types.html">docs</a>
+    </p>
 
-    <!-- Deployment info-->
+    <div id="diagram-container" class="p-3 rounded bg-dark-subtle text-center"></div>
+
     <div class="mt-4">
-        <h5>Policy</h5>
-        <span>
-            <b>Deployment Controller</b> = [[${ecsFargateAlbControlDto.deploymentController.type}]],
-            <b>minimumHealthyPercent</b> = [[${ecsFargateAlbControlDto.deploymentConfiguration.minimumHealthyPercent}]] %,
-            <b>maximumHealthyPercent</b> = [[${ecsFargateAlbControlDto.deploymentConfiguration.maximumPercent}]] %
-        </span>
-        <a href="https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-types.html">
-            Documentation
-        </a>
+        <h6 class="text-muted">Recent scaling events</h6>
+        <ul id="events-list" class="list-unstyled small font-monospace mb-0">
+            <li th:each="event : ${ecsFargateAlbControlDto.events}" th:text="${event}"></li>
+        </ul>
     </div>
+
 </div>
+
+<script th:inline="javascript">
+    /*<![CDATA[*/
+    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+    let svgCounter = 0;
+
+    function buildDiagram(tasks) {
+        const lines = [
+            'graph LR',
+            '    User(["🌐 User"])',
+            '    ALB["🔀 ALB<br/>:80"]',
+            '    TG["⚖️ Target Group<br/>:8080  /actuator/health"]',
+            '    User -->|"HTTP :80"| ALB',
+            '    ALB --> TG',
+        ];
+        const styleLines = [];
+        // edges 0=User→ALB, 1=ALB→TG, then one per task starting at 2
+        let edgeIndex = 2;
+
+        tasks.forEach(function(task) {
+            const id = String(task.id || '');
+            const shortId = id.substring(0, 12) + '…';
+            const taskDef = String(task.taskDefinition || '').split(':')[1] || '';
+            const status = String(task.lastStatus || '');
+            const createdAt = String(task.createdAt || '').substring(0, 19).replace('T', ' ');
+            const nodeId = 'T' + id;
+            const label = '📦 ECS Fargate task<br/>'
+                + 'id: ' + shortId + ', '
+                + 'version: ' + taskDef + '<br/>'
+                + status + ', '
+                + 'created: ' + createdAt;
+
+            if (task.isCurrent) {
+                lines.push('    TG ==>|"this request"| ' + nodeId + '["' + label + '"]');
+                styleLines.push('    style ' + nodeId + ' fill:#ff9900,stroke:#e07000,color:#000,font-weight:bold');
+                styleLines.push('    linkStyle ' + edgeIndex + ' stroke:#ff9900,stroke-width:3px');
+            } else {
+                lines.push('    TG --> ' + nodeId + '["' + label + '"]');
+            }
+            edgeIndex++;
+        });
+
+        lines.push.apply(lines, styleLines);
+        return lines.join('\n');
+    }
+
+    async function renderDiagram(tasks) {
+        const container = document.getElementById('diagram-container');
+        const id = 'svg-' + (++svgCounter);
+        const { svg } = await mermaid.render(id, buildDiagram(tasks));
+        container.innerHTML = svg;
+    }
+
+    async function refreshData() {
+        try {
+            const resp = await fetch('/alb-ecs-fargate/data');
+            const data = await resp.json();
+            document.getElementById('task-arn').textContent = data.taskArn;
+            document.getElementById('cpu').textContent = data.cpu;
+            await renderDiagram(data.tasks);
+            const eventsList = document.getElementById('events-list');
+            eventsList.innerHTML = (data.events || []).map(function(e) {
+                return '<li>' + e.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</li>';
+            }).join('');
+        } catch (e) {
+            console.error('refresh failed', e);
+        }
+    }
+
+    function scheduleRefresh() {
+        refreshData().then(function() { setTimeout(scheduleRefresh, 3000); });
+    }
+
+    // Initial render from server-side Thymeleaf data (instant, no extra round-trip)
+    const initialRows = /*[[${ecsFargateAlbControlDto.controlTable.rows}]]*/ [];
+    const initialTasks = initialRows.map(function(row) {
+        return {
+            isCurrent: row['isCurrent'],
+            id: String(row['Id'] || ''),
+            taskDefinition: String(row['taskDefinition'] || ''),
+            capacityProvider: String(row['capacityProvider'] || ''),
+            lastStatus: String(row['lastStatus'] || ''),
+            createdAt: String(row['createdAt'] || '')
+        };
+    });
+    renderDiagram(initialTasks).then(function() { setTimeout(scheduleRefresh, 3000); });
+    /*]]>*/
+</script>
+
 </body>
 </html>

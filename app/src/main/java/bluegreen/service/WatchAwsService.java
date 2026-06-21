@@ -12,4 +12,9 @@ public interface WatchAwsService<T> {
                 .orElse("");
     }
 
+    default Object safe(final Object o) {
+        return Optional.ofNullable(o)
+                .orElse("");
+    }
+
 }
