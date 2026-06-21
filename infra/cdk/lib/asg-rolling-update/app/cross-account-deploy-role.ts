@@ -1,0 +1,29 @@
+import { AccountPrincipal, Effect, ManagedPolicy, PolicyStatement, Role } from 'aws-cdk-lib/aws-iam';
+import { Construct } from 'constructs';
+import { Constants } from '../../constants';
+
+export class CrossAccountDeployRole extends Construct {
+    constructor(scope: Construct, id: string) {
+        super(scope, id);
+
+        const policy = new ManagedPolicy(this, 'Policy', {
+            statements: [
+                new PolicyStatement({
+                    effect: Effect.ALLOW,
+                    actions: [
+                        'autoscaling:StartInstanceRefresh',
+                        'autoscaling:DescribeInstanceRefreshes',
+                        'autoscaling:DescribeAutoScalingGroups',
+                    ],
+                    resources: ['*'],
+                }),
+            ],
+        });
+
+        new Role(this, 'Role', {
+            roleName: Constants.ASG_CROSS_ACCOUNT_ROLE_NAME,
+            assumedBy: new AccountPrincipal(Constants.DEFAULT_ACCOUNT),
+            managedPolicies: [policy],
+        });
+    }
+}
