@@ -2,15 +2,18 @@ package bluegreen.model;
 
 import software.amazon.awssdk.regions.internal.util.EC2MetadataUtils;
 
+import java.util.List;
 import java.util.Objects;
 
 public class Ec2ControlDto {
     private EC2MetadataUtils.InstanceInfo instanceInfo;
     private ControlTable controlTable;
+    private List<String> events;
 
     private Ec2ControlDto(Builder b) {
         this.instanceInfo = b.instanceInfo;
         this.controlTable = b.controlTable;
+        this.events = b.events;
     }
 
     public static Builder builder() {
@@ -20,6 +23,7 @@ public class Ec2ControlDto {
     public static class Builder {
         private EC2MetadataUtils.InstanceInfo instanceInfo;
         private ControlTable controlTable;
+        private List<String> events;
 
         public Builder instanceInfo(EC2MetadataUtils.InstanceInfo instanceInfo) {
             this.instanceInfo = instanceInfo;
@@ -28,6 +32,11 @@ public class Ec2ControlDto {
 
         public Builder controlTable(ControlTable controlTable) {
             this.controlTable = controlTable;
+            return this;
+        }
+
+        public Builder events(List<String> events) {
+            this.events = events;
             return this;
         }
 
@@ -50,6 +59,14 @@ public class Ec2ControlDto {
 
     public void setControlTable(ControlTable controlTable) {
         this.controlTable = controlTable;
+    }
+
+    public List<String> getEvents() {
+        return events;
+    }
+
+    public void setEvents(List<String> events) {
+        this.events = events;
     }
 
     @Override

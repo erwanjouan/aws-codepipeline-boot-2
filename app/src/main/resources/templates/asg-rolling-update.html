@@ -1,73 +1,125 @@
 <!DOCTYPE HTML>
 <html xmlns:th="http://www.thymeleaf.org" data-bs-theme="dark">
 <head>
-    <meta http-equiv="refresh" content="3">
-
-    <title>Blue Green App</title>
+    <title>ASG Rolling Update</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
 
-    <!-- bootstrap -->
     <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.0/css/bootstrap.min.css}"/>
     <script th:src="@{/webjars/bootstrap/5.3.0/js/bootstrap.min.js}"></script>
 
-    <!-- jquery -->
-    <script th:src="@{/webjars/jquery/3.4.1/jquery.min.js}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 
-    <!-- jquery datatable-->
-    <link rel="stylesheet" th:href="@{/webjars/datatables/1.10.19/css/jquery.dataTables.min.css}"/>
-    <script th:src="@{/webjars/datatables/1.10.19/js/jquery.dataTables.min.js}"></script>
-
+    <style>
+        #diagram-container svg { max-width: 100%; height: auto; }
+    </style>
 </head>
-
 <body>
 
-<div class="container-fluid p-5 text-center">
-    <h4>ASG of EC2s behind ALB</h4>
-    <h6>UpdatePolicy: Rolling Update</h6>
-</div>
+<div class="container-fluid p-4">
 
-<div class="container ml-1">
-    <!-- From instance-->
-    <div class="mt-2">
-        <h5>From Instance</h5>
-        <span>
-            <b>InstanceId=</b>
-            [[${ec2ControlDto.instanceInfo.getInstanceId}]]
-            ([[${ec2ControlDto.instanceInfo.getAvailabilityZone}]])
-        </span>
-    </div>
+    <h4>ASG of EC2s behind ALB <small class="text-muted fw-light">rolling update</small></h4>
 
-    <!-- Deployed instance-->
-    <div class="mt-5">
-        <h5>Instances</h5>
-        <table id="sample" class="table table-bordered table-hover table-striped">
-            <thead>
-            <tr class="headings">
-                <th th:each="header: ${ec2ControlDto.controlTable.headers}" class="column-title"
-                    th:text="${header}" th:style="|background: ${color}|"/>
-            </tr>
-            </thead>
-            <tbody>
-            <tr class="even pointer" th:each="row: ${ec2ControlDto.controlTable.rows}" id="tablerow">
-                <td th:each="header: ${ec2ControlDto.controlTable.headers}" th:text="${row.get(header)}"/>
-            </tr>
-            </tbody>
-        </table>
-    </div>
+    <p class="small mb-3">
+        Serving instance: <code id="instance-id" th:text="${ec2ControlDto.instanceInfo.getInstanceId}">…</code>
+    </p>
 
-    <!-- Deployment info-->
+    <div id="diagram-container" class="p-3 rounded bg-dark-subtle text-center"></div>
+
     <div class="mt-4">
-        <h5>UpdatePolicy section</h5>
-        <span>
-            <b>AutoScalingReplacingUpdate(WillReplace</b> = false),
-            <b>AutoScalingRollingUpdate(MaxBatchSize</b> = 2,
-            <b>MinInstancesInService</b> = 2,
-            <b>WaitOnResourceSignals</b> = true)
-        </span>
-        <a href="https://docs.aws.amazon.com/fr_fr/AWSCloudFormation/latest/UserGuide/aws-attribute-updatepolicy.html">
-            Documentation
-        </a>
+        <h6 class="text-muted">Recent scaling activities</h6>
+        <ul id="events-list" class="list-unstyled small font-monospace mb-0">
+            <li th:each="event : ${ec2ControlDto.events}" th:text="${event}"></li>
+        </ul>
     </div>
+
 </div>
+
+<script th:inline="javascript">
+    /*<![CDATA[*/
+    mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+    let svgCounter = 0;
+
+    function buildDiagram(instances) {
+        const lines = [
+            'graph LR',
+            '    User(["🌐 User"])',
+            '    ALB["🔀 ALB<br/>:80"]',
+            '    TG["⚖️ Target Group<br/>:8080  /actuator/health"]',
+            '    User -->|"HTTP :80"| ALB',
+            '    ALB --> TG',
+        ];
+        const styleLines = [];
+        let edgeIndex = 2;
+
+        instances.forEach(function(inst) {
+            const id = String(inst.id || '');
+            const shortId = id.substring(0, 10) + '…';
+            const state = String(inst.instanceState || '');
+            const lifecycle = String(inst.asgLifeCycle || '');
+            const elbHc = String(inst.elbHc || '');
+            const launchTime = String(inst.launchTime || '').substring(0, 19).replace('T', ' ');
+            const nodeId = 'I' + id.replace(/-/g, '');
+            const label = '🖥️ EC2 instance<br/>'
+                + 'id: ' + shortId + '<br/>'
+                + 'state: ' + state + ', lifecycle: ' + lifecycle + '<br/>'
+                + 'elb: ' + elbHc + ', launched: ' + launchTime;
+
+            if (inst.isCurrent) {
+                lines.push('    TG ==>|"this request"| ' + nodeId + '["' + label + '"]');
+                styleLines.push('    style ' + nodeId + ' fill:#ff9900,stroke:#e07000,color:#000,font-weight:bold');
+                styleLines.push('    linkStyle ' + edgeIndex + ' stroke:#ff9900,stroke-width:3px');
+            } else {
+                lines.push('    TG --> ' + nodeId + '["' + label + '"]');
+            }
+            edgeIndex++;
+        });
+
+        lines.push.apply(lines, styleLines);
+        return lines.join('\n');
+    }
+
+    async function renderDiagram(instances) {
+        const container = document.getElementById('diagram-container');
+        const id = 'svg-' + (++svgCounter);
+        const { svg } = await mermaid.render(id, buildDiagram(instances));
+        container.innerHTML = svg;
+    }
+
+    async function refreshData() {
+        try {
+            const resp = await fetch('/asg-rolling-update/data');
+            const data = await resp.json();
+            document.getElementById('instance-id').textContent = data.instanceId;
+            await renderDiagram(data.instances);
+            const eventsList = document.getElementById('events-list');
+            eventsList.innerHTML = (data.events || []).map(function(e) {
+                return '<li>' + e.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</li>';
+            }).join('');
+        } catch (e) {
+            console.error('refresh failed', e);
+        }
+    }
+
+    function scheduleRefresh() {
+        refreshData().then(function() { setTimeout(scheduleRefresh, 3000); });
+    }
+
+    // Initial render from server-side Thymeleaf data (instant, no extra round-trip)
+    const initialRows = /*[[${ec2ControlDto.controlTable.rows}]]*/ [];
+    const initialInstances = initialRows.map(function(row) {
+        return {
+            isCurrent: row['#'] === 'X',
+            id: String(row['Id'] || ''),
+            launchTime: String(row['LaunchTime'] || ''),
+            instanceState: String(row['InstanceState'] || ''),
+            asgLifeCycle: String(row['AsgLifeCycle'] || ''),
+            elbHc: String(row['ElbHc'] || '')
+        };
+    });
+    renderDiagram(initialInstances).then(function() { setTimeout(scheduleRefresh, 3000); });
+    /*]]>*/
+</script>
+
 </body>
 </html>

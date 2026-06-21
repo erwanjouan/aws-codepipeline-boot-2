@@ -18,6 +18,8 @@ env:
   PROJECT_NAME:  'aws-codepipeline-boot-2'
   DEPLOYMENT_NAME: 'ec2-image-builder'
   PROJECT_DEPLOYMENT_NAME: 'aws-codepipeline-boot-2-ec2-image-builder'
+  TARGET_ARCHITECTURE: 'x86_64'
+  #TARGET_ARCHITECTURE: 'arm64'
 
 jobs:
   destroy-fargate-cicd:

@@ -13,7 +13,7 @@ import { Vpc } from './vpc';
 export class Asg extends Construct {
     readonly asgName: string;
 
-    constructor(scope: Construct, id: string, appVpc: Vpc, targetGroup: ApplicationTargetGroup, role: Role, webappSg: SecurityGroup) {
+    constructor(scope: Construct, id: string, appVpc: Vpc, targetGroup: ApplicationTargetGroup, role: Role, webappSg: SecurityGroup, architecture: Ec2Architecture) {
         super(scope, id);
 
         const projectName = process.env.PROJECT_NAME!;
@@ -33,7 +33,7 @@ export class Asg extends Construct {
         const asg = new AutoScalingGroup(this, 'Asg', {
             vpc: appVpc.vpc,
             vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
-            machineImage: MachineImage.fromSsmParameter(Constants.PARAMETER_STORE_AMI),
+            machineImage: MachineImage.fromSsmParameter(architecture.getParameterStoreName()),
             instanceType: new InstanceType(Ec2Architecture.X86_64.instanceType),
             role,
             securityGroup: webappSg,

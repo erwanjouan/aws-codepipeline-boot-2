@@ -15,8 +15,6 @@ export class ParameterStoreUpdater extends Construct {
   constructor(scope: Construct, id: string, amiId:string, architecture:Ec2Architecture) {
     super(scope, id);
 
-    const parameterStoreArn = `arn:aws:ssm:${Constants.DEFAULT_REGION}:${Constants.DEFAULT_ACCOUNT}:parameter${Constants.PARAMETER_STORE_AMI}/${architecture.label}`
-    
     const allowSsm:ManagedPolicy = new ManagedPolicy(this, 'allowSsmPoliciy', {
       statements: [
         new PolicyStatement({
@@ -27,7 +25,7 @@ export class ParameterStoreUpdater extends Construct {
                 "ssm:GetParameterHistory",
                 "ssm:GetParameter"
             ],
-            resources: [parameterStoreArn]
+            resources: [architecture.getParameterStoreArn()]
         })]
     })
 
@@ -57,7 +55,7 @@ export class ParameterStoreUpdater extends Construct {
       serviceToken: provider.serviceToken,
       properties: {
         'AmiId': amiId,
-        'ParameterStoreName': `${Constants.PARAMETER_STORE_AMI}/${architecture.label}`
+        'ParameterStoreName': `${architecture.getParameterStoreName()}`
       },
     });
 

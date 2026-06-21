@@ -11,6 +11,9 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.regions.internal.util.EC2MetadataUtils;
+import software.amazon.awssdk.services.autoscaling.AutoScalingClient;
+import software.amazon.awssdk.services.autoscaling.model.DescribeScalingActivitiesRequest;
+import software.amazon.awssdk.services.autoscaling.model.DescribeScalingActivitiesResponse;
 import software.amazon.awssdk.services.codedeploy.CodeDeployClient;
 import software.amazon.awssdk.services.codedeploy.model.DeploymentGroupInfo;
 import software.amazon.awssdk.services.codedeploy.model.GetDeploymentGroupRequest;
@@ -24,6 +27,8 @@ import software.amazon.awssdk.services.ec2.model.Instance;
 import software.amazon.awssdk.services.ec2.model.Reservation;
 import software.amazon.awssdk.services.elasticloadbalancingv2.model.TargetHealthDescription;
 
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -44,6 +49,9 @@ public class WatchAsgUpdatePolicyService implements WatchAwsService<Ec2ControlDt
 
     @Autowired
     private Ec2Client ec2Client;
+
+    @Autowired
+    private AutoScalingClient autoScalingClient;
 
     @Autowired
     private CodeDeployClient codeDeployClient;
@@ -100,12 +108,31 @@ public class WatchAsgUpdatePolicyService implements WatchAwsService<Ec2ControlDt
             return Ec2ControlDto.builder()
                     .controlTable(controlTable)
                     .instanceInfo(this.instanceInfo)
+                    .events(this.getRecentScalingActivities())
                     .build();
         } catch (final Ec2Exception ec2Exception) {
             System.err.println(ec2Exception.awsErrorDetails().errorCode());
             return Ec2ControlDto.builder().build();
         }
 
+    }
+
+    private static final DateTimeFormatter ACTIVITY_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.of("Europe/Paris"));
+
+    private List<String> getRecentScalingActivities() {
+        try {
+            final DescribeScalingActivitiesRequest request = DescribeScalingActivitiesRequest.builder()
+                    .autoScalingGroupName(this.getProjectDeploymentName())
+                    .maxRecords(5)
+                    .build();
+            final DescribeScalingActivitiesResponse response = this.autoScalingClient.describeScalingActivities(request);
+            return response.activities().stream()
+                    .map(a -> ACTIVITY_FMT.format(a.startTime()) + " – " + a.description())
+                    .collect(Collectors.toList());
+        } catch (final Exception e) {
+            return List.of();
+        }
     }
 
     private void getEc2Instances(final List<Instance> instances) {
