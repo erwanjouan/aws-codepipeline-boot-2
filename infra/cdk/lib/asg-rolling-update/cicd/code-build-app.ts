@@ -18,6 +18,11 @@ export class CodeBuildApp extends Construct {
         const buildSpec = BuildSpec.fromObject({
             version: '0.2',
             phases: {
+                install: {
+                    'runtime-versions': {
+                        java: 'corretto21',
+                    },
+                },
                 pre_build: {
                     commands: [
                         'aws --version && java --version && mvn --version',
