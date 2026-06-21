@@ -14,6 +14,16 @@ export class CrossAccountDeployRole extends Construct {
                         'autoscaling:StartInstanceRefresh',
                         'autoscaling:DescribeInstanceRefreshes',
                         'autoscaling:DescribeAutoScalingGroups',
+                        'autoscaling:UpdateAutoScalingGroup',
+                    ],
+                    resources: ['*'],
+                }),
+                new PolicyStatement({
+                    effect: Effect.ALLOW,
+                    actions: [
+                        'ec2:DescribeLaunchTemplates',
+                        'ec2:DescribeLaunchTemplateVersions',
+                        'ec2:CreateLaunchTemplateVersion',
                     ],
                     resources: ['*'],
                 }),

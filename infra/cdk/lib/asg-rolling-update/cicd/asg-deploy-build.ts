@@ -15,11 +15,17 @@ export class AsgDeployBuild extends Construct {
         const region = Constants.DEFAULT_REGION;
         const crossAccountRoleArn = `arn:aws:iam::${Constants.WORKLOAD_ACCOUNT_ID}:role/${Constants.ASG_CROSS_ACCOUNT_ROLE_NAME}`;
 
+        const amiParamName = `/custom/ami/al2023/${process.env.TARGET_ARCHITECTURE}`;
+
         const buildSpec = BuildSpec.fromObject({
             version: '0.2',
             phases: {
                 pre_build: {
                     commands: [
+                        // Read AMI ID from CICD account SSM before assuming the cross-account role
+                        `export AMI_ID=$(aws ssm get-parameter --name ${amiParamName} --region ${region} --query Parameter.Value --output text)`,
+                        `echo "AMI to deploy: $AMI_ID"`,
+                        // Assume cross-account role to access the workload account
                         `CREDS=$(aws sts assume-role --role-arn ${crossAccountRoleArn} --role-session-name asg-rolling-deploy)`,
                         `export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r .Credentials.AccessKeyId)`,
                         `export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r .Credentials.SecretAccessKey)`,
@@ -28,9 +34,15 @@ export class AsgDeployBuild extends Construct {
                 },
                 build: {
                     commands: [
+                        // Resolve the launch template attached to the ASG
+                        `LT_ID=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names ${asgName} --region ${region} --query 'AutoScalingGroups[0].LaunchTemplate.LaunchTemplateId' --output text)`,
+                        // Create a new launch template version with the new AMI, inheriting all other settings
+                        `NEW_LT_VERSION=$(aws ec2 create-launch-template-version --launch-template-id $LT_ID --source-version '$Latest' --launch-template-data "{\\"ImageId\\":\\"$AMI_ID\\"}" --region ${region} --query 'LaunchTemplateVersion.VersionNumber' --output text)`,
+                        // Point the ASG at the new launch template version
+                        `aws autoscaling update-auto-scaling-group --auto-scaling-group-name ${asgName} --launch-template "LaunchTemplateId=$LT_ID,Version=$NEW_LT_VERSION" --region ${region}`,
+                        // Trigger a rolling instance refresh so all instances pick up the new AMI
                         `REFRESH_ID=$(aws autoscaling start-instance-refresh --auto-scaling-group-name ${asgName} --region ${region} --preferences '{"MinHealthyPercentage":50,"InstanceWarmup":300}' --query InstanceRefreshId --output text)`,
                         `echo "Instance refresh started: $REFRESH_ID"`,
-                        // Poll until the refresh completes
                         [
                             `while true; do`,
                             `  STATUS=$(aws autoscaling describe-instance-refreshes --auto-scaling-group-name ${asgName} --region ${region} --instance-refresh-ids $REFRESH_ID --query 'InstanceRefreshes[0].Status' --output text);`,
