@@ -18,7 +18,8 @@ env:
   PROJECT_NAME: 'aws-codepipeline-boot-2'
   DEPLOYMENT_NAME: 'asg-rolling-update'
   PROJECT_DEPLOYMENT_NAME: 'aws-codepipeline-boot-2-asg-rolling-update'
-
+  TARGET_ARCHITECTURE: 'x86_64'
+  #TARGET_ARCHITECTURE: 'arm64'
 jobs:
   destroy-asg-rolling-cicd:
     environment: production
