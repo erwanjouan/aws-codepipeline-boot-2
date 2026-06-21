@@ -29,7 +29,7 @@ export class CodeBuildApp extends Construct {
                         `export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token --domain ${domain} --query authorizationToken --output text)`,
                         `export CODEARTIFACT_REPOSITORY_URL=$(aws codeartifact get-repository-endpoint --domain ${domain} --repository ${repository} --format maven --query repositoryEndpoint --output text)`,
                         // Substitute env vars into the Maven settings template
-                        'envsubst < infra/cloudformation/asg-rolling-update/.m2/settings.xml > /tmp/settings.xml',
+                        'envsubst < infra/cdk/lib/asg-rolling-update/.m2/settings.xml > /tmp/settings.xml',
                     ],
                 },
                 build: {
