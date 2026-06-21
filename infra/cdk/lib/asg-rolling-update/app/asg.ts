@@ -33,7 +33,7 @@ export class Asg extends Construct {
         const asg = new AutoScalingGroup(this, 'Asg', {
             vpc: appVpc.vpc,
             vpcSubnets: { subnetType: SubnetType.PRIVATE_WITH_EGRESS },
-            machineImage: MachineImage.fromSsmParameter(architecture.getCustomAmiParameterStoreName()),
+            machineImage: MachineImage.fromSsmParameter(architecture.getBaseAmiParameterStore()),
             instanceType: new InstanceType(Ec2Architecture.X86_64.instanceType),
             role,
             securityGroup: webappSg,
