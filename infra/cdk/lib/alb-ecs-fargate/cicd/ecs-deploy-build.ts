@@ -31,10 +31,14 @@ export class EcsDeployBuild extends Construct {
                 },
                 build: {
                     commands: [
+                        // Troubleshoot identity
+                        `aws sts get-caller-identity`,
                         // Fetch the live task definition, clear the nginx bootstrap command override,
                         // and substitute the new Spring Boot image URI before registering.
                         `TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition ${clusterName} --region ${region} | jq --arg img "$IMAGE_URI" '.taskDefinition | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.placementConstraints,.compatibilities,.registeredAt,.registeredBy) | .containerDefinitions[0].image = $img | del(.containerDefinitions[0].command)')`,
+                        `echo TASK_DEF_JSON $TASK_DEF_JSON`,
                         `NEW_TASK_DEF_ARN=$(aws ecs register-task-definition --region ${region} --cli-input-json "$TASK_DEF_JSON" | jq -r .taskDefinition.taskDefinitionArn)`,
+                        `echo NEW_TASK_DEF_ARN $NEW_TASK_DEF_ARN`,
                         `aws ecs update-service --cluster ${clusterName} --service ${clusterName} --region ${region} --task-definition $NEW_TASK_DEF_ARN`,
                     ],
                 },

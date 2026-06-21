@@ -7,4 +7,5 @@ export abstract class Constants {
     static readonly PARAMETER_STORE_AMI = "/custom/ami/al2023"
     static readonly ARTIFACT_NAME = "app.jar"
     static readonly FARGATE_CROSS_ACCOUNT_ROLE_NAME = 'fargate-cross-account-deploy-role'
+    static readonly ASG_CROSS_ACCOUNT_ROLE_NAME = 'asg-rolling-cross-account-deploy-role'
   }
