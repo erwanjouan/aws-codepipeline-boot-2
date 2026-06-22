@@ -32,6 +32,14 @@ export class CrossAccountDeployRole extends Construct {
                     actions: ['ec2:RunInstances', 'ec2:UseLaunchTemplate'],
                     resources: ['arn:aws:ec2:*:*:launch-template/*'],
                 }),
+                new PolicyStatement({
+                    effect: Effect.ALLOW,
+                    actions: ['iam:PassRole'],
+                    resources: ['arn:aws:iam::*:role/*'],
+                    conditions: {
+                        StringEquals: { 'iam:PassedToService': 'ec2.amazonaws.com' },
+                    },
+                }),
             ],
         });
 
