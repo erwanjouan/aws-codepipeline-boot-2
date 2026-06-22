@@ -29,7 +29,7 @@ export class CrossAccountDeployRole extends Construct {
                 }),
                 new PolicyStatement({
                     effect: Effect.ALLOW,
-                    actions: ['ec2:RunInstances'],
+                    actions: ['ec2:RunInstances', 'ec2:UseLaunchTemplate'],
                     resources: ['arn:aws:ec2:*:*:launch-template/*'],
                 }),
             ],
